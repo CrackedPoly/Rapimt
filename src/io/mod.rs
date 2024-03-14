@@ -1,33 +1,43 @@
-/// Default format of the topo and fib.
-mod default;
+pub mod default;
 
 use crate::core::action::CodedAction;
 use crate::core::im::Rule;
-use crate::core::Predicate;
+use crate::core::{MatchEncoder, Predicate};
 use crate::io::basic::action::ActionType;
 use nom::error::{Error, ParseError};
 use nom::{Finish, IResult};
 
-/// Action = action type + neighbors
+/// UncodedAction is an action on a specific device, it should have rich
+/// information, and may not be fix-sized. It can be encoded by its
+/// ActionEncoder.
 ///
-/// Action should have rich information, and may not have fixed size. Action
-/// is device-specific, and should be encoded into fixed-size EncodedAction
-/// before computation.
+/// ***This trait is manufacture-specific.***
 pub trait UncodedAction {
     fn get_type(&self) -> ActionType;
     fn get_next_hops(&self) -> Vec<&str>;
 }
 
-/// EncodedAction is a fixed-size representation of Action.
+/// ActionEncoder is essentially an instance that has ports' all information
+/// (name, mode, neighbors) in a device, it can encode/decode action
+/// into/from CodedAction (which is more compact), and lookup the action by
+/// port name.
+///
+/// ***This trait is manufacture-specific. CodedAction can have different
+/// implementations.***
 pub trait ActionEncoder<'a, A: CodedAction = u32>
 where
     Self: 'a,
 {
     type UA: UncodedAction + 'a;
     fn encode(&'a self, action: Self::UA) -> A;
-    fn decode(&'a self, code: A) -> Self::UA;
+    fn decode(&'a self, coded_action: A) -> Self::UA;
+    fn lookup(&'a self, port_name: &str) -> Self::UA;
 }
 
+/// InstanceLoader is a parser that can load a specific instance
+/// (ActionEncoder) from a specific format.
+///
+/// ***The trait and the format are manufacture-specific.***
 pub trait InstanceLoader<'a, AE, UA, A = u32>
 where
     AE: ActionEncoder<'a, A>,
@@ -45,14 +55,34 @@ where
     }
 }
 
-pub trait FibLoader<'a, P: Predicate, A: CodedAction = u32>
+/// FibLoader enables ActionEncoder instances to parse and encode fib rules
+/// from a specific format.
+///
+/// ***The trait and the format are manufacture-specific.***
+pub trait FibLoader<'a, 'p, P, A = u32>
 where
-    Self: ActionEncoder<'a, A>,
+    Self: ActionEncoder<'a, A> + 'p,
+    P: Predicate + 'p,
+    A: CodedAction,
 {
-    fn _load<'x, Err: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), Vec<Rule<P, A>>, Err>;
+    fn _load<'x, 's: 'p, ME, Err>(
+        &'s self,
+        engine: &'p ME,
+        content: &'x str,
+    ) -> IResult<(), (String, Vec<Rule<P, A>>), Err>
+    where
+        ME: MatchEncoder<'p, P = P>,
+        Err: ParseError<&'x str>;
 
-    fn load<'x>(&self, content: &'x str) -> Result<Vec<Rule<P, A>>, Error<&'x str>> {
-        let res = self._load(content).finish();
+    fn load<'x, 's: 'p, ME>(
+        &'s self,
+        engine: &'p ME,
+        content: &'x str,
+    ) -> Result<(String, Vec<Rule<P, A>>), Error<&'x str>>
+    where
+        ME: MatchEncoder<'p, P = P>,
+    {
+        let res = self._load(engine, content).finish();
         return match res {
             Ok((_, rules)) => Ok(rules),
             Err(e) => Err(e),
@@ -60,6 +90,7 @@ where
     }
 }
 
+/// Basic helper functions for parsing and basic action types.
 pub mod basic {
     pub mod parser {
         use nom::branch::alt;
@@ -81,7 +112,7 @@ pub mod basic {
             take_while1(is_ident)(input)
         }
 
-        /// r""[0-9]+"
+        /// r"[0-9]+"
         pub fn parse_digits<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
             digit1(input)
         }
@@ -102,6 +133,9 @@ pub mod basic {
         }
 
         /// "<port_prefix>[0-9/\\.-]\+"
+        ///
+        /// **Your format may not be like this. If the case, use [parse_ident]
+        /// or else instead.**
         pub fn parse_port<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
             fn is_port_ident(chr: char) -> bool {
                 is_digit(chr as u8) || chr == '/' || chr == '.' || chr == '-' || chr == '_' || chr == '\\'
@@ -109,6 +143,7 @@ pub mod basic {
             recognize(pair(parse_port_prefix, take_while1(is_port_ident)))(input)
         }
 
+        /// r"[<=255].[<=255].[<=255].[<=255]"
         pub fn parse_ipv4_dotted<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, u32, E> {
             fn parse_u8<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, u8, E> {
                 let (rest, num) = digit1(input)?;
@@ -134,6 +169,7 @@ pub mod basic {
             ));
         }
 
+        /// r"[<=u32::MAX]"
         pub fn parse_ipv4_num<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, u32, E> {
             let (rest, num) = digit1(input)?;
             return if let Ok(num) = num.parse::<u32>() {

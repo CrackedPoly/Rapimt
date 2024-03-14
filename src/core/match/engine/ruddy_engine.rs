@@ -216,7 +216,7 @@ impl SubAssign for RuddyPredicate<'_> {
 }
 
 impl PredicateOp for RuddyPredicate<'_> {
-    fn empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.bdd == self.engine.manager.borrow().get_false()
     }
 
@@ -364,7 +364,7 @@ mod tests {
         let mut engine = RuddyPredicateEngine::new();
         engine.init(1000, 100, family);
         let fm0 = fm_range_from!("sport", 123, 147);
-        let (p, mvs) = engine.encode_match(fm0);
+        let (_, mvs) = engine.encode_match(fm0);
         assert_eq!(mvs.len(), 4);
         assert_eq!(mvs[0].value, 123);
         assert_eq!(mvs[1].value, 124);
@@ -373,10 +373,7 @@ mod tests {
 
         let fm0 = fm_range_from!("sport", 123, 147);
         let fm1 = fm_range_from!("dport", 123, 147);
-        let (p0, mvs) = engine.encode_matches(vec![fm0, fm1]);
-        for mv in mvs.iter() {
-            println!("{:?}", mv);
-        }
+        let (_, mvs) = engine.encode_matches(vec![fm0, fm1]);
         assert_eq!(mvs.len(), 16);
     }
 }

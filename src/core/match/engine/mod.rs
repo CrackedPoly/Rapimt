@@ -149,7 +149,7 @@ where
 /// # Methods
 /// ## No-side-effect methods
 /// - [==](PartialEq::eq) checks if two predicates are equal.
-/// - [empty](PredicateOp::empty) checks if the predicate is empty.
+/// - [empty](PredicateOp::is_empty) checks if the predicate is empty.
 /// ## Side effect methods
 /// *Side effect* means the method either produces a new predicate or
 /// consumes/drop existing predicates.
@@ -178,6 +178,7 @@ where
 /// predicate is no longer needed, you should drop it.
 /// - This method is called inside ***op=*** methods to consume the rhs operand.
 /// # Examples
+/// This example demonstrates how to use the `&` and `&=` like methods.
 /// ```no_run
 /// use fast_imt::core::{MatchFamily, RuddyPredicateEngine, FieldMatch,
 /// MatchEncoder, Predicate, PredicateOp, ipv4_to_match};
@@ -224,6 +225,6 @@ pub trait PredicateOp:
 where
     Self: Copy,
 {
-    fn empty(&self) -> bool;
+    fn is_empty(&self) -> bool;
     fn drop(self);
 }

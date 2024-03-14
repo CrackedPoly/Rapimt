@@ -54,8 +54,8 @@ pub enum MatchFamily {
     /// ## Field names
     /// - "dip": destination IP
     /// ## Field value formats
-    /// - ExactMatch: "192.168.1.1/32" or "3232235777/32"
-    /// - TernaryMatch: "192.168.1.0/24" or "3232235776/24"
+    /// - ExactMatch
+    /// - TernaryMatch
     Inet4Family,
     /// # The TCP 4-tuple match family
     /// This family contains the source port, destination port, source IP, and
@@ -67,10 +67,11 @@ pub enum MatchFamily {
     /// - "dip": destination IP
     /// ## Field value formats
     /// ### Port fields
-    /// - ExactMatch: "80"
+    /// - ExactMatch
+    /// - RangeMatch
     /// ### IP fields
-    /// - ExactMatch: "192.168.1.1/32" or "3232235777/32"
-    /// - TernaryMatch: "192.168.1.0/24" or "3232235776/24"
+    /// - ExactMatch: TernaryMatch(/32 prefix)
+    /// - TernaryMatch
     TcpT4Family,
 }
 
@@ -133,6 +134,14 @@ impl FamilyDecl for MatchFamily {
 pub mod macros {
     use crate::core::Match;
 
+    /// Create a FieldMatch with an IPv4 value.
+    /// ```no_run
+    /// use fast_imt::fm_ipv4_from;
+    /// use fast_imt::core::{FieldMatch, Match, ipv4_to_match};
+    /// let _ = fm_ipv4_from!("dip", "192.168.1.0/24");
+    /// let _ = fm_ipv4_from!("dip", "3232235776/32");
+    /// let _ = fm_ipv4_from!("dip", "0/0");
+    /// ```
     #[macro_export]
     macro_rules! fm_ipv4_from {
         ($field:expr, $value:expr) => {
@@ -145,6 +154,12 @@ pub mod macros {
     #[allow(unused_imports)]
     pub(crate) use fm_ipv4_from;
 
+    /// Create a FieldMatch with an exact value.
+    /// ```no_run
+    /// use fast_imt::fm_exact_from;
+    /// use fast_imt::core::{FieldMatch, Match, ipv4_to_match};
+    /// let _ = fm_exact_from!("dport", 80);
+    /// ```
     #[macro_export]
     macro_rules! fm_exact_from {
         ($field:expr, $value:expr) => {
@@ -157,6 +172,12 @@ pub mod macros {
     #[allow(unused_imports)]
     pub(crate) use fm_exact_from;
 
+    /// Create a FieldMatch with a range value, both inclusive.
+    /// ```no_run
+    /// use fast_imt::fm_range_from;
+    /// use fast_imt::core::{FieldMatch, Match, ipv4_to_match};
+    /// let _ = fm_range_from!("sport", 80, 100);
+    /// ```
     #[macro_export]
     macro_rules! fm_range_from {
         ($field:expr, $low:expr, $high:expr) => {

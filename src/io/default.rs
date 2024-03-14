@@ -1,6 +1,8 @@
+use crate::core::im::Rule;
+use crate::core::{FieldMatch, Match, MatchEncoder, Predicate};
 use crate::io::basic::action::ActionType;
-use crate::io::basic::parser::{parse_ident, parse_port};
-use crate::io::{ActionEncoder, InstanceLoader, UncodedAction};
+use crate::io::basic::parser::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num, parse_port};
+use crate::io::{ActionEncoder, FibLoader, InstanceLoader, UncodedAction};
 use indexmap::map::IndexMap;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
@@ -62,11 +64,21 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
         action.idx
     }
 
-    fn decode(&'a self, code: u32) -> Self::UA {
+    fn decode(&'a self, coded_action: u32) -> Self::UA {
         TypedAction {
-            idx: code,
+            idx: coded_action,
             origin: self,
         }
+    }
+
+    fn lookup(&'a self, port_name: &str) -> Self::UA {
+        self.ports
+            .get_full(port_name)
+            .map(|(idx, _, _)| TypedAction {
+                idx: idx as u32,
+                origin: self,
+            })
+            .unwrap()
     }
 }
 
@@ -165,21 +177,85 @@ fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
     ))
 }
 
+impl<'a, 'p, P: Predicate + 'p> FibLoader<'a, 'p, P> for PortInfoBase {
+    fn _load<'x, 's: 'p, ME, Err>(
+        &'s self,
+        engine: &'p ME,
+        content: &'x str,
+    ) -> IResult<(), (String, Vec<Rule<P, u32>>), Err>
+    where
+        ME: MatchEncoder<'p, P = P>,
+        Err: ParseError<&'x str>,
+    {
+        let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
+        let (rest, rules) = separated_list0(multispace1, parse_ipv4_rule(engine, self))(rest)?;
+        let (_, _) = all_consuming(multispace0)(rest)?;
+        Ok(((), (dev.to_owned(), rules)))
+    }
+}
+
+/// Returns a closure that parses an IPv4 rule and returns a [Rule] instance.
+/// The closure have the lifetime of MatchEncoder's 'p and ActionEncoder's 'a,
+/// where 'a == 'p.
+fn parse_ipv4_rule<'x, 'a: 'p, 'p: 'a, ME, AE, P, E>(
+    engine: &'p ME,
+    action_encoder: &'a AE,
+) -> impl Fn(&'x str) -> IResult<&'x str, Rule<P, u32>, E> + 'p + 'a
+where
+    P: Predicate + 'p,
+    ME: MatchEncoder<'p, P = P>,
+    AE: ActionEncoder<'a>,
+    E: ParseError<&'x str>,
+{
+    move |input| {
+        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = tuple((
+            tag("fw"),
+            multispace1,
+            alt((parse_ipv4_dotted, parse_ipv4_num)),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<u32>().unwrap()),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<u32>().unwrap()),
+            multispace1,
+            parse_port,
+        ))(input)?;
+        let value = value as u128;
+        let mask: u128 = ((1 << p_len) - 1) << (32 - p_len);
+        let fm = FieldMatch {
+            field: "dip".to_owned(),
+            cond: Match::TernaryMatch { value, mask },
+        };
+        let (pred, mvs) = engine.encode_match(fm);
+        let action = action_encoder.encode(action_encoder.lookup(port_name));
+        Ok((
+            rest,
+            Rule {
+                priority: prio,
+                action,
+                predicate: pred,
+                origin: mvs,
+            },
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::MatchFamily::Inet4Family;
+    use crate::core::RuddyPredicateEngine;
 
     #[test]
-    fn test_instance_loader() {
+    fn test_loaders() {
         let loader = DefaultParser::new();
-        let content = r#"
+        let spec = r#"
         name dev0
         neighbor ge0 dev1
         neighbor ge1 dev2
         port gi0 ecmp ge0 ge1
         port gi1 flood ge0 ge1
         "#;
-        let base = loader.load(content).unwrap();
+        let base = loader.load(spec).unwrap();
         assert_eq!(base.dev, "dev0");
         assert_eq!(base.nbrs.len(), 2);
         assert_eq!(base.ports.len(), 4);
@@ -191,28 +267,45 @@ mod tests {
         assert_eq!(n2.name, "dev2");
         assert_eq!(n2.external, false);
 
-        let p1 = base.ports.get("gi0").unwrap();
-        assert_eq!(p1.name, "gi0");
-        assert_eq!(p1.mode, ActionType::ECMP);
-        assert_eq!(p1.p_ports.len(), 2);
+        let p1 = base.ports.get("ge0").unwrap();
+        assert_eq!(p1.name, "ge0");
+        assert_eq!(p1.mode, ActionType::FORWARD);
+        assert_eq!(p1.p_ports.len(), 1);
         assert_eq!(p1.p_ports[0], "ge0");
-        assert_eq!(p1.p_ports[1], "ge1");
-        let p2 = base.ports.get("gi1").unwrap();
-        assert_eq!(p2.name, "gi1");
-        assert_eq!(p2.mode, ActionType::FLOOD);
-        assert_eq!(p2.p_ports.len(), 2);
-        assert_eq!(p2.p_ports[0], "ge0");
-        assert_eq!(p2.p_ports[1], "ge1");
-        let p3 = base.ports.get("ge0").unwrap();
-        assert_eq!(p3.name, "ge0");
-        assert_eq!(p3.mode, ActionType::FORWARD);
-        assert_eq!(p3.p_ports.len(), 1);
+        let p2 = base.ports.get("ge1").unwrap();
+        assert_eq!(p2.name, "ge1");
+        assert_eq!(p2.mode, ActionType::FORWARD);
+        assert_eq!(p2.p_ports.len(), 1);
+        assert_eq!(p2.p_ports[0], "ge1");
+        let p3 = base.ports.get("gi0").unwrap();
+        assert_eq!(p3.name, "gi0");
+        assert_eq!(p3.mode, ActionType::ECMP);
+        assert_eq!(p3.p_ports.len(), 2);
         assert_eq!(p3.p_ports[0], "ge0");
-        let p4 = base.ports.get("ge1").unwrap();
-        assert_eq!(p4.name, "ge1");
-        assert_eq!(p4.mode, ActionType::FORWARD);
-        assert_eq!(p4.p_ports.len(), 1);
-        assert_eq!(p4.p_ports[0], "ge1");
+        assert_eq!(p3.p_ports[1], "ge1");
+        let p4 = base.ports.get("gi1").unwrap();
+        assert_eq!(p4.name, "gi1");
+        assert_eq!(p4.mode, ActionType::FLOOD);
+        assert_eq!(p4.p_ports.len(), 2);
+        assert_eq!(p4.p_ports[0], "ge0");
+        assert_eq!(p4.p_ports[1], "ge1");
+
+        let fib = r#"
+        name dev0
+        fw 192.168.1.0 24 24 gi0
+        fw 0.0.0.0 0 0 ge0
+        "#;
+        let mut engine = RuddyPredicateEngine::new();
+        engine.init(1000, 100, Inet4Family);
+        let (dev, rules) = base.load(&engine, fib).unwrap();
+        assert_eq!(dev, "dev0");
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
+        assert_eq!(rules[0].priority, 24);
+        assert_eq!(rules[0].action, 2);
+        assert_eq!(rules[1].predicate.to_string(), "dip: 0.0.0.0/0");
+        assert_eq!(rules[1].priority, 0);
+        assert_eq!(rules[1].action, 0);
     }
 
     #[test]
