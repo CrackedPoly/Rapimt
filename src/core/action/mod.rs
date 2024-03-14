@@ -1,18 +1,20 @@
 mod seq_action;
 
-trait Action {}
+/// EncodedAction should have fixed size and be cast [Into] to u32. We assume
+/// that the number of actions on single device will not exceed 2^32.
+///
+/// EncodedAction.into() == 0 means no overwrite
+pub trait CodedAction: Default + Sized + Copy + Into<u32> {}
 
-trait ActionEncoder {
-    fn encode(&self, action: dyn Action) -> u64;
-    fn decode(&self, code: u64) -> dyn Action;
-}
+impl CodedAction for u32 {}
 
-trait Actions {
-    type Impl;
-    fn get_impl(&self) -> &Self::Impl;
-    fn get(&self, idx: usize) -> u64;
+pub trait Actions<A: CodedAction> {
+    fn from(a: A) -> Self;
+    fn from_all(data: Vec<A>) -> Self;
+    fn get(&self, idx: usize) -> A;
+    fn get_all(&self) -> &[A];
     fn resize(&self, to: usize, offset: usize) -> Self;
-    fn update(self, pos: usize, value: u64) -> Self;
-    fn diff(&self, rhs: &Self) -> u64;
+    fn update(&mut self, idx: usize, value: A);
+    fn diff(&self, rhs: &Self) -> usize;
     fn overwrite(&self, rhs: &Self) -> Self;
 }

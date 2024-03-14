@@ -32,11 +32,9 @@ impl RuddyPredicateEngine {
     /// # Recommendation
     /// For recommendation, call ```init(1000, 100, family)``` to start with.
     pub fn init(&mut self, node_num: usize, cache_size: usize, family: MatchFamily) {
-        self.manager.borrow_mut().init(
-            node_num as u32,
-            cache_size as u32,
-            family.get_max_pos() as u32,
-        );
+        self.manager
+            .borrow_mut()
+            .init(node_num as u32, cache_size as u32, family.get_max_pos() as u32);
         let mut pairs = vec![(
             self.manager.borrow().get_true(),
             self.manager.borrow().get_false(),
@@ -77,10 +75,10 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
         &self.family
     }
 
-    fn _encode(&'a self, value: u128, mask: u128, lower: u128, higher: u128) -> Self::P {
-        let bdd = (lower..=higher)
+    fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Self::P {
+        let bdd = (from..=to)
             .map(|i| {
-                let offset = i - lower;
+                let offset = i - from;
                 let imasked = ((mask >> offset) & 1) == 1;
                 let ivalue = ((value >> offset) & 1) == 1;
                 if imasked {
@@ -227,90 +225,6 @@ impl PredicateOp for RuddyPredicate<'_> {
     }
 }
 
-// impl RuddyPredicate<'_> {
-//     #[inline]
-//     fn equals(&self, rhs: &Self) -> bool {
-//         self.bdd == rhs.bdd
-//     }
-//
-//     #[inline]
-//     fn any(&self) -> bool {
-//         self.bdd != self.engine.manager.borrow().get_false()
-//     }
-//
-//     fn not(&self) -> Self {
-//         let bdd = self.engine.manager.borrow_mut().not(&self.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         RuddyPredicate {
-//             bdd,
-//             engine: self.engine,
-//         }
-//     }
-//
-//     fn not_to(&mut self) {
-//         let bdd = self.engine.manager.borrow_mut().not(&self.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-//         self.bdd = bdd;
-//     }
-//
-//     fn and(&self, rhs: &Self) -> Self {
-//         let bdd = self.engine.manager.borrow_mut().and(&self.bdd, &rhs.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         RuddyPredicate {
-//             bdd,
-//             engine: self.engine,
-//         }
-//     }
-//
-//     fn and_to(&mut self, rhs: Self) {
-//         let bdd = self.engine.manager.borrow_mut().and(&self.bdd, &rhs.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-//         self.bdd = bdd;
-//         rhs.drop();
-//     }
-//
-//     fn or(&self, rhs: &Self) -> Self {
-//         let bdd = self.engine.manager.borrow_mut().or(&self.bdd, &rhs.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         RuddyPredicate {
-//             bdd,
-//             engine: self.engine,
-//         }
-//     }
-//
-//     fn or_to(&mut self, rhs: Self) {
-//         let bdd = self.engine.manager.borrow_mut().or(&self.bdd, &rhs.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-//         self.bdd = bdd;
-//         rhs.drop();
-//     }
-//
-//     fn comp(&self, rhs: &Self) -> Self {
-//         let bdd = self.engine.manager.borrow_mut().comp(&self.bdd, &rhs.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         RuddyPredicate {
-//             bdd,
-//             engine: self.engine,
-//         }
-//     }
-//
-//     fn comp_to(&mut self, rhs: Self) {
-//         let bdd = self.engine.manager.borrow_mut().comp(&self.bdd, &rhs.bdd);
-//         self.engine.manager.borrow_mut().ref_bdd(&bdd);
-//         self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-//         self.bdd = bdd;
-//         rhs.drop();
-//     }
-//
-//     #[inline]
-//     fn drop(self) {
-//         self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-//     }
-// }
-
 impl Predicate for RuddyPredicate<'_> {}
 
 impl Display for RuddyPredicate<'_> {
@@ -325,10 +239,7 @@ impl Display for RuddyPredicate<'_> {
             let str = str.trim_end();
             return if str.contains("\n") {
                 let ss: Vec<String> = str.split("\n").map(|s| s.to_string()).collect();
-                let ps: Vec<String> = ss
-                    .iter()
-                    .map(|s| to_prefix(s.to_string(), offset))
-                    .collect();
+                let ps: Vec<String> = ss.iter().map(|s| to_prefix(s.to_string(), offset)).collect();
                 ps.join(" OR ")
             } else {
                 let prefix_str: &str = &str[offset..offset + 32];
@@ -347,10 +258,7 @@ impl Display for RuddyPredicate<'_> {
                     let second = u8::from_str_radix(&real_prefix_str[8..16], 2).unwrap();
                     let third = u8::from_str_radix(&real_prefix_str[16..24], 2).unwrap();
                     let fourth = u8::from_str_radix(&real_prefix_str[24..32], 2).unwrap();
-                    format!(
-                        "{:}.{:}.{:}.{:}/{:}",
-                        first, second, third, fourth, prefix_len
-                    )
+                    format!("{:}.{:}.{:}.{:}/{:}", first, second, third, fourth, prefix_len)
                 }
             };
         }
@@ -359,9 +267,7 @@ impl Display for RuddyPredicate<'_> {
         self.engine.manager.borrow().print(&mut s, &self.bdd)?;
         match self.engine.family {
             MatchFamily::Inet4Family => f.write_fmt(format_args!("dip: {}", to_prefix(s, 0)))?,
-            MatchFamily::TcpT4Family => {
-                f.write_fmt(format_args!("dip only: {}", to_prefix(s, 0)))?
-            }
+            MatchFamily::TcpT4Family => f.write_fmt(format_args!("dip only: {}", to_prefix(s, 0)))?,
         }
         Ok(())
     }
@@ -370,8 +276,9 @@ impl Display for RuddyPredicate<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::r#match::family::FieldValue;
-    use crate::fv_from;
+    use crate::core::r#match::family::FieldMatch;
+    use crate::core::{ipv4_to_match, Match};
+    use crate::{fm_ipv4_from, fm_range_from};
 
     #[test]
     #[allow(unused_variables)]
@@ -382,12 +289,12 @@ mod tests {
         engine.init(100, 10, family);
 
         // 2. encode the field value to get a predicate
-        let fv = fv_from!("dip", "3232235776/24");
-        let pred = engine.encode_value(fv);
+        let fv = fm_ipv4_from!("dip", "3232235776/24");
+        let (pred, _) = engine.encode_match(fv);
         assert_eq!(pred.to_string(), "dip: 192.168.1.0/24");
 
-        let fv = fv_from!("dip", "192.168.1.0/24");
-        let pred = engine.encode_value(fv);
+        let fv = fm_ipv4_from!("dip", "192.168.1.0/24");
+        let (pred, _) = engine.encode_match(fv);
         assert_eq!(pred.to_string(), "dip: 192.168.1.0/24");
     }
 
@@ -396,7 +303,7 @@ mod tests {
         let family = MatchFamily::Inet4Family;
         let mut engine = RuddyPredicateEngine::new();
         engine.init(100, 10, family);
-        let p = engine.encode_value(fv_from!("dip", "192.168.0.0/24"));
+        let (p, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/24"));
         let not = !p;
         let times_or = not.to_string().matches("OR").count();
         assert_eq!(times_or, 23);
@@ -407,8 +314,8 @@ mod tests {
         let family = MatchFamily::Inet4Family;
         let mut engine = RuddyPredicateEngine::new();
         engine.init(100, 10, family);
-        let mut p0 = engine.encode_value(fv_from!("dip", "192.168.0.0/24"));
-        let p1 = engine.encode_value(fv_from!("dip", "192.168.1.0/24"));
+        let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/24"));
+        let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/24"));
         p0 |= p1;
         assert_eq!(p0.to_string(), "dip: 192.168.0.0/23");
     }
@@ -418,8 +325,8 @@ mod tests {
         let family = MatchFamily::Inet4Family;
         let mut engine = RuddyPredicateEngine::new();
         engine.init(100, 10, family);
-        let mut p0 = engine.encode_value(fv_from!("dip", "192.168.1.0/24"));
-        let p1 = engine.encode_value(fv_from!("dip", "192.168.1.0/28"));
+        let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/24"));
+        let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/28"));
         p0 &= p1;
         assert_eq!(p0.to_string(), "dip: 192.168.1.0/28");
     }
@@ -429,8 +336,8 @@ mod tests {
         let family = MatchFamily::Inet4Family;
         let mut engine = RuddyPredicateEngine::new();
         engine.init(100, 10, family);
-        let mut p0 = engine.encode_value(fv_from!("dip", "192.168.0.0/23"));
-        let p1 = engine.encode_value(fv_from!("dip", "192.168.0.0/24"));
+        let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/23"));
+        let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/24"));
         p0 -= p1;
         assert_eq!(p0.to_string(), "dip: 192.168.1.0/24");
     }
@@ -440,8 +347,8 @@ mod tests {
         let family = MatchFamily::Inet4Family;
         let mut engine = RuddyPredicateEngine::new();
         engine.init(100, 10, family);
-        let mut p0 = engine.encode_value(fv_from!("dip", "64.0.0.0/2"));
-        let p1 = engine.encode_value(fv_from!("dip", "192.0.0.0/2"));
+        let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "64.0.0.0/2"));
+        let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.0.0.0/2"));
 
         engine.gc();
         p0 |= p1;
@@ -449,5 +356,27 @@ mod tests {
         // p1 is mutated to -1------..., aka the 2nd positive variable, so both
         // "64.0.0.0/2" and "192.0.0.0/2" are freed
         assert_eq!(freed, 2);
+    }
+
+    #[test]
+    fn test_range_encode() {
+        let family = MatchFamily::TcpT4Family;
+        let mut engine = RuddyPredicateEngine::new();
+        engine.init(1000, 100, family);
+        let fm0 = fm_range_from!("sport", 123, 147);
+        let (p, mvs) = engine.encode_match(fm0);
+        assert_eq!(mvs.len(), 4);
+        assert_eq!(mvs[0].value, 123);
+        assert_eq!(mvs[1].value, 124);
+        assert_eq!(mvs[2].value, 128);
+        assert_eq!(mvs[3].value, 144);
+
+        let fm0 = fm_range_from!("sport", 123, 147);
+        let fm1 = fm_range_from!("dport", 123, 147);
+        let (p0, mvs) = engine.encode_matches(vec![fm0, fm1]);
+        for mv in mvs.iter() {
+            println!("{:?}", mv);
+        }
+        assert_eq!(mvs.len(), 16);
     }
 }

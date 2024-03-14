@@ -8,9 +8,43 @@
 
 pub mod ruddy_engine;
 
-use crate::core::r#match::family::{FamilyDecl, FieldValue, Match, MatchFamily};
+use crate::core::r#match::family::{FamilyDecl, FieldMatch, Match, MatchFamily};
 use crate::core::Predicate;
+use rug::Integer;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
+
+#[derive(Debug)]
+pub struct MaskedValue {
+    pub value: Integer,
+    pub mask: Integer,
+}
+
+macro_rules! impl_masked_value_from {
+($($t:ty),*) => {
+        $(
+            impl From<($t, $t)> for MaskedValue {
+                fn from(pair: ($t, $t)) -> Self {
+                    MaskedValue {
+                        value: Integer::from(pair.0),
+                        mask: Integer::from(pair.1),
+                    }
+                }
+            }
+        )*
+    };
+}
+
+impl_masked_value_from!(u8, u16, u32, u64, u128);
+
+impl<'a> BitOr for &'a MaskedValue {
+    type Output = MaskedValue;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        MaskedValue {
+            value: self.value.clone() | rhs.value.clone(),
+            mask: self.mask.clone() | rhs.mask.clone(),
+        }
+    }
+}
 
 /// MatchEncoder parses field values and encodes them into predicates.
 pub trait MatchEncoder<'a>
@@ -22,34 +56,79 @@ where
     fn one(&'a self) -> Self::P;
     fn zero(&'a self) -> Self::P;
     fn family(&self) -> &MatchFamily;
-    fn _encode(&'a self, value: u128, mask: u128, lower: u128, higher: u128) -> Self::P;
-    /// Encode a field value into a predicate.
-    fn encode_value(&'a self, fv: FieldValue) -> Self::P {
+    fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Self::P;
+
+    fn encode_match(&'a self, fm: FieldMatch) -> (Self::P, Vec<MaskedValue>) {
         let family = self.family();
-        let fm = family.parse(fv);
         match family.get_field_declaration(fm.field) {
             Some(fdecl) => {
-                let lower = fdecl.from;
-                let upper = fdecl.to;
-                match fm.cond {
+                let from = fdecl.from;
+                let to = fdecl.to;
+                return match fm.cond {
                     Match::ExactMatch { value } => {
-                        self._encode(value, (1 << (upper - lower + 1)) - 1, lower, upper)
+                        let mask: u128 = (1 << (to - from + 1)) - 1;
+                        (
+                            self._encode(value, mask, from, to),
+                            vec![MaskedValue::from((value << from, mask << from))],
+                        )
                     }
-                    Match::TernaryMatch { value, mask } => self._encode(value, mask, lower, upper),
-                    _ => panic!("{}", format!("Unsupported match type: {:?}", fm.cond)),
-                }
+                    Match::TernaryMatch { value, mask } => (
+                        self._encode(value, mask, from, to),
+                        vec![MaskedValue::from((value << from, mask << from))],
+                    ),
+                    Match::RangeMatch { mut low, high } => {
+                        let mask: u128 = (1 << (to - from + 1)) - 1;
+                        let mut vm_pairs = vec![];
+                        loop {
+                            let t_zeros = low.trailing_zeros();
+                            let mut inc: u128 = 1 << t_zeros;
+                            low = low + inc;
+                            while low - 1 > high {
+                                inc = inc >> 1;
+                                low = low - inc;
+                            }
+                            let t_zeros = inc.trailing_zeros();
+                            vm_pairs.push((low - inc, (mask >> t_zeros) << t_zeros));
+                            if low - 1 == high {
+                                break;
+                            }
+                        }
+                        let mut pred = self.zero();
+                        let mvs = vm_pairs
+                            .iter()
+                            .map(|(v, m)| {
+                                pred |= self._encode(*v, *m, from, to);
+                                MaskedValue::from((*v << from, *m << from))
+                            })
+                            .collect();
+                        (pred, mvs)
+                    }
+                };
             }
-            _ => self.one(),
+            _ => (self.one(), vec![MaskedValue::from((0u32, 0u32))]),
         }
     }
-    /// Encode a list of field values into a predicate.
-    fn encode_values(&'a self, fvs: Vec<FieldValue>) -> Self::P {
-        fvs.into_iter()
-            .map(|fv| self.encode_value(fv))
-            .fold(self.one(), |mut acc, pred| {
-                acc &= pred;
-                acc
-            })
+
+    fn encode_matches(&'a self, fms: Vec<FieldMatch>) -> (Self::P, Vec<MaskedValue>) {
+        let mut pred = self.zero();
+        let mut mvs = vec![];
+        for fm in fms {
+            let (p, sub_mvs) = self.encode_match(fm);
+            pred |= p;
+            if mvs.is_empty() {
+                mvs.extend(sub_mvs)
+            } else {
+                // do a cross product of mvs and sub_mvs
+                let mut new_mvs = vec![];
+                for mv in mvs.iter() {
+                    for sub_mv in sub_mvs.iter() {
+                        new_mvs.push(mv | sub_mv);
+                    }
+                }
+                mvs = new_mvs;
+            }
+        }
+        (pred, mvs)
     }
 }
 
@@ -100,15 +179,15 @@ where
 /// - This method is called inside ***op=*** methods to consume the rhs operand.
 /// # Examples
 /// ```no_run
-/// use fast_imt::core::{MatchFamily, RuddyPredicateEngine, FieldValue,
-/// MatchEncoder, Predicate, PredicateOp};
-/// use crate::fast_imt::fv_from;
+/// use fast_imt::core::{MatchFamily, RuddyPredicateEngine, FieldMatch,
+/// MatchEncoder, Predicate, PredicateOp, ipv4_to_match};
+/// use crate::fast_imt::fm_ipv4_from;
 ///
 /// fn get_predicates<T: Predicate>(engine: &dyn MatchEncoder<P=T>) -> [T; 3] {
 ///     [
-///         engine.encode_value(fv_from!("dip", "192.168.1.0/24")),
-///         engine.encode_value(fv_from!("dip", "192.168.1.0/25")),
-///         engine.encode_value(fv_from!("dip", "192.168.1.0/26")),
+///         engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/24")).0,
+///         engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/25")).0,
+///         engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/26")).0,
 ///     ]
 /// }
 ///

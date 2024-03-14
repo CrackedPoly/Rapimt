@@ -4,8 +4,6 @@
 //! In packet processing, a match family is a set of fields that can be
 //! matched against a packet. For example, in the TCP 4-tuple match family
 //! [TcpT4Family](MatchFamily::TcpT4Family), the fields are (s_port, d_port, s_ip, d_ip).
-//! The family declares these fields and provides a method to
-//! [parse](FamilyDecl::parse) a [FieldValue](FieldValue) into a [FieldMatch](FieldMatch).
 //!
 //! ## What is it used for?
 //! We only need to know what fields are in a match family.
@@ -14,35 +12,13 @@
 //!
 //! ## Example
 //! ```no_run
-//! use crate::fast_imt::core::{Match, FieldValue, MatchFamily, FamilyDecl};
+//! use crate::fast_imt::core::{Match, FieldMatch, MatchFamily, FamilyDecl, ipv4_to_match};
+//! use crate::fast_imt::fm_ipv4_from;
 //!
-//! let family = MatchFamily::TcpT4Family;
-//! let fv = FieldValue {
-//!     field: "dip".to_string(),
-//!     value: "192.168.1.0/24".to_string(),
-//! };
-//! let fm = family.parse(fv);
+//! let fm = fm_ipv4_from!("dip", "192.168.1.0/24");
 //! // fm.cond is parsed into a Match::TernaryMatch
 //! assert!(matches!(fm.cond, Match::TernaryMatch { .. }));
 //! ```
-
-#[macro_export]
-macro_rules! fv_from {
-    ($from:expr, $to:expr) => {
-        FieldValue {
-            field: $from.to_string(),
-            value: $to.to_string(),
-        }
-    };
-}
-#[allow(unused_imports)]
-pub(crate) use fv_from;
-
-#[derive(Clone, Debug)]
-pub struct FieldValue {
-    pub field: String,
-    pub value: String,
-}
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -61,14 +37,13 @@ pub struct FieldMatch {
 #[derive(Clone, Debug)]
 pub struct FieldDeclaration {
     pub name: &'static str,
-    pub from: u128,
-    pub to: u128,
+    pub from: u32,
+    pub to: u32,
 }
 
 pub trait FamilyDecl {
     fn get_max_pos(&self) -> u128;
     fn get_field_declaration(&self, name: String) -> Option<FieldDeclaration>;
-    fn parse(&self, fv: FieldValue) -> FieldMatch;
 }
 
 #[allow(dead_code)]
@@ -138,10 +113,10 @@ impl MatchFamily {
 
 impl FamilyDecl for MatchFamily {
     fn get_max_pos(&self) -> u128 {
-        match self {
+        (match self {
             MatchFamily::Inet4Family => MatchFamily::INET4_FIELDS.last().unwrap().to + 1,
             MatchFamily::TcpT4Family => MatchFamily::TCP_FIELDS.last().unwrap().to + 1,
-        }
+        }) as u128
     }
 
     fn get_field_declaration(&self, name: String) -> Option<FieldDeclaration> {
@@ -153,49 +128,63 @@ impl FamilyDecl for MatchFamily {
         }
         return None;
     }
-
-    fn parse(&self, fv: FieldValue) -> FieldMatch {
-        let fields = self.get_fields();
-        for f in fields.iter() {
-            if f.name == fv.field {
-                match f.name {
-                    "dip" | "sip" => {
-                        return FieldMatch {
-                            field: fv.field,
-                            cond: ipv4_to_match(fv.value),
-                        };
-                    }
-                    "sport" | "dport" => {
-                        return FieldMatch {
-                            field: fv.field,
-                            cond: Match::ExactMatch {
-                                value: fv.value.parse().unwrap(),
-                            },
-                        };
-                    }
-                    _ => {
-                        panic!("Unsupported field type");
-                    }
-                }
-            }
-        }
-        panic!("Unsupported field type");
-    }
 }
 
-const INET4_FAMILY_V4_LEN: u128 = 32;
-const INET4_FAMILY_V4_MASK: u128 = (1 << INET4_FAMILY_V4_LEN) - 1;
+pub mod macros {
+    use crate::core::Match;
 
-fn ipv4_to_match(value: String) -> Match {
-    let items: Vec<_> = value.split('/').collect();
-    let plen: u128 = items[1].parse().expect("Wrong format of IPv4 prefix");
-    let ip: u128 = if let Ok(num) = items[0].parse() {
-        num
-    } else {
-        let octets: Vec<u128> = items[0].split('.').map(|s| s.parse().unwrap()).collect();
-        (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
-    };
-    let mask =
-        (INET4_FAMILY_V4_MASK >> (INET4_FAMILY_V4_LEN - plen)) << (INET4_FAMILY_V4_LEN - plen);
-    Match::TernaryMatch { value: ip, mask }
+    #[macro_export]
+    macro_rules! fm_ipv4_from {
+        ($field:expr, $value:expr) => {
+            FieldMatch {
+                field: $field.to_owned(),
+                cond: ipv4_to_match($value.to_owned()),
+            }
+        };
+    }
+    #[allow(unused_imports)]
+    pub(crate) use fm_ipv4_from;
+
+    #[macro_export]
+    macro_rules! fm_exact_from {
+        ($field:expr, $value:expr) => {
+            FieldMatch {
+                field: $field.to_owned(),
+                cond: Match::ExactMatch { value: $value },
+            }
+        };
+    }
+    #[allow(unused_imports)]
+    pub(crate) use fm_exact_from;
+
+    #[macro_export]
+    macro_rules! fm_range_from {
+        ($field:expr, $low:expr, $high:expr) => {
+            FieldMatch {
+                field: $field.to_owned(),
+                cond: Match::RangeMatch {
+                    low: $low,
+                    high: $high,
+                },
+            }
+        };
+    }
+    #[allow(unused_imports)]
+    pub(crate) use fm_range_from;
+
+    const INET4_FAMILY_V4_LEN: u128 = 32;
+    const INET4_FAMILY_V4_MASK: u128 = (1 << INET4_FAMILY_V4_LEN) - 1;
+
+    pub fn ipv4_to_match(value: String) -> Match {
+        let items: Vec<_> = value.split('/').collect();
+        let plen: u128 = items[1].parse().expect("Wrong format of IPv4 prefix");
+        let ip: u128 = if let Ok(num) = items[0].parse() {
+            num
+        } else {
+            let octets: Vec<u128> = items[0].split('.').map(|s| s.parse().unwrap()).collect();
+            (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
+        };
+        let mask = (INET4_FAMILY_V4_MASK >> (INET4_FAMILY_V4_LEN - plen)) << (INET4_FAMILY_V4_LEN - plen);
+        Match::TernaryMatch { value: ip, mask }
+    }
 }
