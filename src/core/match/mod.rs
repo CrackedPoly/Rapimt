@@ -13,7 +13,7 @@
 //!
 //! ## Example
 //! ```no_run
-//! use fast_imt::core::r#match::{PredicateOp, PredicateEngine, MatchEncoder,
+//! use fast_imt::core::r#match::{Predicate, PredicateEngine, MatchEncoder,
 //! RuddyPredicateEngine, ipv4_to_match, FieldMatch};
 //! use fast_imt::core::r#match::family::{MatchFamily};
 //! use crate::fast_imt::fm_ipv4_from;
@@ -31,19 +31,21 @@
 //!
 //! // Operate
 //! let p3 = p1 & p2;
-//! p1.drop();
-//! p2.drop();
 //! ```
 
-use family::{FamilyDecl, MatchFamily};
-use rug::Integer;
-use std::fmt::Display;
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
+
+use rug::Integer;
+
+pub use engine::ruddy_engine::RuddyPredicateEngine;
+use family::{FamilyDecl, MatchFamily};
+pub use macros::ipv4_to_match;
+
+use crate::io::CodedAction;
 
 pub mod engine;
 pub mod family;
-pub use engine::ruddy_engine::RuddyPredicateEngine;
-pub use macros::ipv4_to_match;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -53,13 +55,13 @@ pub enum Match {
   RangeMatch { low: u128, high: u128 },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FieldMatch {
   pub field: String,
   pub cond: Match,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Eq, PartialEq, Debug)]
 pub struct MaskedValue {
   pub value: Integer,
   pub mask: Integer,
@@ -69,29 +71,34 @@ impl<'a> BitOr for &'a MaskedValue {
   type Output = MaskedValue;
   fn bitor(self, rhs: Self) -> Self::Output {
     MaskedValue {
-      value: self.value.clone() | rhs.value.clone(),
-      mask: self.mask.clone() | rhs.mask.clone(),
+      value: Integer::from(&self.value | &rhs.value),
+      mask: Integer::from(&self.mask & &rhs.mask),
     }
   }
 }
 
-pub trait PredicateEngine<'a, P>: MatchEncoder<'a, P = P> + PredicateIO<'a, P = P> {}
-
-pub trait Predicate: PredicateOp + Display {}
+/// PredicateEngine enables serialization and deserialization of a predicate.
+/// It is useful when local storing or remote transmitting predicates.
+pub trait PredicateEngine<'a, P: PredicateInner>: MatchEncoder<'a, P = P> {
+  /// Deserialize a predicate according to the buffer.
+  fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Predicate<Self::P>>;
+  /// Serialize the predicate to the buffer.
+  fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Option<usize>;
+}
 
 /// MatchEncoder parses field values and encodes them into predicates.
 pub trait MatchEncoder<'a>
 where
   Self: 'a,
 {
-  type P: Predicate + 'a;
+  type P: PredicateInner + 'a;
   fn gc(&self) -> Option<usize>;
-  fn one(&'a self) -> Self::P;
-  fn zero(&'a self) -> Self::P;
+  fn one(&'a self) -> Predicate<Self::P>;
+  fn zero(&'a self) -> Predicate<Self::P>;
   fn family(&self) -> &MatchFamily;
-  fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Self::P;
+  fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Predicate<Self::P>;
 
-  fn encode_match(&'a self, fm: FieldMatch) -> (Self::P, Vec<MaskedValue>) {
+  fn encode_match(&'a self, fm: FieldMatch) -> (Predicate<Self::P>, Vec<MaskedValue>) {
     let family = self.family();
     match family.get_field_declaration(fm.field) {
       Some(fdecl) => {
@@ -142,7 +149,7 @@ where
     }
   }
 
-  fn encode_matches(&'a self, fms: Vec<FieldMatch>) -> (Self::P, Vec<MaskedValue>) {
+  fn encode_matches(&'a self, fms: Vec<FieldMatch>) -> (Predicate<Self::P>, Vec<MaskedValue>) {
     let mut pred = self.zero();
     let mut mvs = vec![];
     for fm in fms {
@@ -165,60 +172,49 @@ where
   }
 }
 
-/// PredicateIO enables serialization and deserialization of a predicate.
-/// It is useful when local storing or remote transmitting predicates.
-pub trait PredicateIO<'a>
-where
-  Self: 'a,
-{
-  type P: Predicate + 'a;
-  /// Deserialize a predicate according to the buffer.
-  fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Self::P>;
-  /// Serialize the predicate to the buffer.
-  fn write_buffer(&'a self, pred: &Self::P, buffer: &mut Vec<u8>) -> Option<usize>;
+pub trait PredicateInner: Copy + Eq + PartialEq + Ord + PartialOrd + Display + Debug {
+  fn not(&self) -> Self;
+  fn and(&self, rhs: &Self) -> Self;
+  fn or(&self, rhs: &Self) -> Self;
+  fn comp(&self, rhs: &Self) -> Self;
+  fn is_empty(&self) -> bool;
+  fn _ref(self) -> Self;
+  fn _deref(&self);
 }
 
-/// [PredicateOp] is an important trait to operate on predicates.
-/// # Methods
-/// ## No-side-effect methods
-/// - [==](PartialEq::eq) checks if two predicates are equal.
-/// - [empty](PredicateOp::is_empty) checks if the predicate is empty.
-/// ## Side effect methods
-/// *Side effect* means the method either produces a new predicate or
-/// consumes/drop existing predicates.
-/// ### Logical operations
-/// - [!](Not::not) returns a new predicate that is the negation of the predicate.
-/// - [&](BitAnd::bitand) returns a new predicate that is the logical AND of
-/// this predicate and the rhs predicate. The rhs predicate is not dropped.
-/// You should drop it manually afterward.
-/// - [&=](BitAndAssign::bitand_assign) updates the current predicate to be
-/// the logical AND of this predicate and the rhs predicate. The rhs
-/// predicate is dropped.
-/// - [|](BitOr::bitor) returns a new predicate that is the logical OR of this
-/// predicate and the rhs predicate. The rhs predicate is not dropped. You
-/// should drop it manually afterward.
-/// - [|=](BitOrAssign::bitor_assign) updates the current predicate to be the
-/// logical OR of this predicate and the rhs predicate. The rhs predicate is
-/// dropped.
-/// - [-](Sub::sub) returns a new predicate that is the logical difference of
-/// this predicate and the rhs predicate. The rhs predicate is not dropped.
-/// You should drop it manually afterward.
-/// - [-=](SubAssign::sub_assign) updates the current predicate to be the
-/// logical difference of this predicate and the rhs predicate. The rhs
-/// predicate is dropped.
-/// ### Drop
-/// [drop](PredicateOp::drop) is a method to consume the predicate. When a valid
-/// predicate is no longer needed, you should drop it.
-/// - This method is called inside ***op=*** methods to consume the rhs operand.
+/// # Predicate
+/// ## Methods
+/// - [!] : logical NOT
+/// - [&] : logical AND
+/// - [|] : logical OR
+/// - [-] : logical DIFF
+/// - [==] : equality
+/// - [is_empty] : check if the predicate is empty
+/// ## Operations explained
+/// Predicate hide reference counting inside, it is coherent with the Rust
+/// ownership model. When a predicate is moved, it is de-referenced
+/// automatically and may be garbage collected afterward. When a new
+/// predicate is produced, it is referenced automatically.
+///
+/// ### Unary operation has two forms
+/// - `let b = !a`: `a` is moved
+/// - `let b = !&a`: `a` is NOT moved
+/// ### Binary operations have three forms
+/// `&`, `|`, `-` have the same forms. Take `&` for example:
+/// - `let c = a & b`: `a` and `b` are moved
+/// - `let c = a & &b`: `a` is moved
+/// - `let c = &a & b`: none is moved
+/// - `let a &= b`: `a` is mutated and `b` is moved
+/// - `let a &= &b`: `a` is mutated
 /// # Examples
 /// This example demonstrates how to use the `&` and `&=` like methods.
 /// ```no_run
 /// use fast_imt::core::r#match::{RuddyPredicateEngine, FieldMatch,
-/// MatchEncoder, PredicateOp, Predicate, ipv4_to_match};
+/// MatchEncoder, PredicateInner, Predicate, ipv4_to_match};
 /// use fast_imt::core::r#match::family::{MatchFamily};
 /// use crate::fast_imt::fm_ipv4_from;
 ///
-/// fn get_predicates<T: Predicate>(engine: &dyn MatchEncoder<P=T>) -> [T; 3] {
+/// fn get_predicates<T: PredicateInner>(engine: &dyn MatchEncoder<P=T>)-> [Predicate<T>;3] {
 ///     [
 ///         engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/24")).0,
 ///         engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/25")).0,
@@ -230,9 +226,7 @@ where
 /// let mut engine = RuddyPredicateEngine::new();
 /// engine.init(100, 10, family);
 ///
-/// // --- Example of `op_to` methods
-/// // get p1 \and p2 \and p3
-/// // p2, p3 are dropped in &= and should no longer be used afterward
+/// // p2, p3 are dropped and should no longer be used afterward
 /// let [mut p1, p2, p3] = get_predicates(&engine);
 /// let p123 = {
 ///     p1 &= p2;
@@ -240,27 +234,206 @@ where
 ///     p1
 /// };
 ///
-/// // --- Example of `op` methods
 /// // get the cross product of [p1, p2, p3] and [p1, p2, p3]
+/// // since iter() returns reference, the predicates are not moved
 /// let pls = Vec::from(get_predicates(&engine));
 /// let prs = Vec::from(get_predicates(&engine));
 /// let mut res = vec![];
 /// for pl in pls.iter() {
 ///     for pr in prs.iter() {
-///         res.push(*pl & *pr);
+///         res.push(pl & pr);
 ///    }
 /// }
-/// // since & method do not consume the operands, we need to drop them manually
-/// pls.into_iter().for_each(|p| p.drop());
-/// prs.into_iter().for_each(|p| p.drop());
-/// ```
-pub trait PredicateOp:
-  PartialEq<Self> + Not + BitAnd + BitAndAssign + BitOr + BitOrAssign + Sub + SubAssign
-where
-  Self: Copy,
-{
-  fn is_empty(&self) -> bool;
-  fn drop(self);
+// ```
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+pub struct Predicate<P: PredicateInner>(P);
+
+impl<P: PredicateInner> Predicate<P> {
+  fn new(p: P) -> Self {
+    Predicate(p._ref())
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+}
+
+impl<P: PredicateInner> Clone for Predicate<P> {
+  fn clone(&self) -> Self {
+    Predicate::new(self.0)
+  }
+}
+
+impl<P: PredicateInner> Drop for Predicate<P> {
+  fn drop(&mut self) {
+    self.0._deref();
+  }
+}
+
+impl<P: PredicateInner> Display for Predicate<P> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    Display::fmt(&self.0, f)
+  }
+}
+
+impl<P: PredicateInner> Not for Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn not(self) -> Self::Output {
+    Predicate::new(self.0.not())
+  }
+}
+
+impl<P: PredicateInner> Not for &'_ Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn not(self) -> Self::Output {
+    Predicate::new(self.0.not())
+  }
+}
+
+impl<P: PredicateInner> BitAnd for Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn bitand(self, rhs: Self) -> Self::Output {
+    Predicate::new(self.0.and(&rhs.0))
+  }
+}
+
+impl<P: PredicateInner> BitAnd<&Self> for Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn bitand(self, rhs: &Self) -> Self::Output {
+    Predicate::new(self.0.and(&rhs.0))
+  }
+}
+
+impl<P: PredicateInner> BitAnd for &'_ Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn bitand(self, rhs: Self) -> Self::Output {
+    Predicate::new(self.0.and(&rhs.0))
+  }
+}
+
+impl<P: PredicateInner> BitAndAssign for Predicate<P> {
+  fn bitand_assign(&mut self, rhs: Self) {
+    let prev = self.0;
+    self.0 = self.0.and(&rhs.0)._ref();
+    prev._deref();
+  }
+}
+
+impl<P: PredicateInner> BitAndAssign<&Self> for Predicate<P> {
+  fn bitand_assign(&mut self, rhs: &Self) {
+    let prev = self.0;
+    self.0 = self.0.and(&rhs.0)._ref();
+    prev._deref();
+  }
+}
+
+impl<P: PredicateInner> BitOr for Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn bitor(self, rhs: Self) -> Self::Output {
+    Predicate(self.0.or(&rhs.0)._ref())
+  }
+}
+
+impl<P: PredicateInner> BitOr<&Self> for Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn bitor(self, rhs: &Self) -> Self::Output {
+    Predicate(self.0.or(&rhs.0)._ref())
+  }
+}
+
+impl<P: PredicateInner> BitOr for &'_ Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn bitor(self, rhs: Self) -> Self::Output {
+    Predicate(self.0.or(&rhs.0)._ref())
+  }
+}
+
+impl<P: PredicateInner> BitOrAssign for Predicate<P> {
+  fn bitor_assign(&mut self, rhs: Self) {
+    let prev = self.0;
+    self.0 = self.0.or(&rhs.0)._ref();
+    prev._deref();
+  }
+}
+
+impl<P: PredicateInner> BitOrAssign<&Self> for Predicate<P> {
+  fn bitor_assign(&mut self, rhs: &Self) {
+    let prev = self.0;
+    self.0 = self.0.or(&rhs.0)._ref();
+    prev._deref();
+  }
+}
+
+impl<P: PredicateInner> Sub for Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn sub(self, rhs: Self) -> Self::Output {
+    Predicate(self.0.comp(&rhs.0)._ref())
+  }
+}
+
+impl<P: PredicateInner> Sub<&Self> for Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn sub(self, rhs: &Self) -> Self::Output {
+    Predicate(self.0.comp(&rhs.0)._ref())
+  }
+}
+
+impl<P: PredicateInner> Sub for &'_ Predicate<P> {
+  type Output = Predicate<P>;
+
+  fn sub(self, rhs: Self) -> Self::Output {
+    Predicate(self.0.comp(&rhs.0)._ref())
+  }
+}
+
+impl<P: PredicateInner> SubAssign for Predicate<P> {
+  fn sub_assign(&mut self, rhs: Self) {
+    let prev = self.0;
+    self.0 = self.0.comp(&rhs.0)._ref();
+    prev._deref();
+  }
+}
+
+impl<P: PredicateInner> SubAssign<&Self> for Predicate<P> {
+  fn sub_assign(&mut self, rhs: &Self) {
+    let prev = self.0;
+    self.0 = self.0.comp(&rhs.0)._ref();
+    prev._deref();
+  }
+}
+
+#[derive(Eq, PartialEq, Debug)]
+pub struct Rule<P: PredicateInner, A: CodedAction = u32> {
+  pub priority: u32,
+  pub action: A,
+  pub predicate: Predicate<P>,
+  pub origin: Vec<MaskedValue>,
+}
+
+impl<P: PredicateInner, A: CodedAction> PartialOrd for Rule<P, A> {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl<P: PredicateInner, A: CodedAction> Ord for Rule<P, A> {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    other
+      .priority
+      .cmp(&self.priority)
+      .then_with(|| other.action.cmp(&self.action))
+      .then_with(|| other.predicate.cmp(&self.predicate))
+  }
 }
 
 macro_rules! impl_masked_value_from {

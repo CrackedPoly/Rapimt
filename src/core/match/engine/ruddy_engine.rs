@@ -1,9 +1,11 @@
-use crate::core::r#match::family::{FamilyDecl, MatchFamily};
-use crate::core::r#match::{MatchEncoder, Predicate, PredicateEngine, PredicateIO, PredicateOp};
-use ruddy::{Bdd, BddIO, BddManager, BddOp, PrintSet, Ruddy};
 use std::cell::RefCell;
-use std::fmt::{Display, Formatter};
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
+use std::cmp::Ordering;
+use std::fmt::{Debug, Display, Formatter};
+
+use ruddy::{Bdd, BddIO, BddManager, BddOp, PrintSet, Ruddy};
+
+use crate::core::r#match::family::{FamilyDecl, MatchFamily};
+use crate::core::r#match::{MatchEncoder, Predicate, PredicateEngine, PredicateInner};
 
 pub struct RuddyPredicateEngine {
   manager: RefCell<Ruddy>,
@@ -57,25 +59,25 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
     self.manager.borrow_mut().gc()
   }
 
-  fn one(&'a self) -> Self::P {
-    RuddyPredicate {
+  fn one(&'a self) -> Predicate<Self::P> {
+    Predicate::new(RuddyPredicate {
       bdd: self.var_pair[0].0,
       engine: self,
-    }
+    })
   }
 
-  fn zero(&'a self) -> Self::P {
-    RuddyPredicate {
+  fn zero(&'a self) -> Predicate<Self::P> {
+    Predicate::new(RuddyPredicate {
       bdd: self.var_pair[0].1,
       engine: self,
-    }
+    })
   }
 
   fn family(&self) -> &MatchFamily {
     &self.family
   }
 
-  fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Self::P {
+  fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Predicate<Self::P> {
     let bdd = (from..=to)
       .map(|i| {
         let offset = i - from;
@@ -92,33 +94,26 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
         }
       })
       .fold(self.var_pair[0].0, |acc, y| {
-        let and = self.manager.borrow_mut().and(&acc, &y);
-        self.manager.borrow_mut().ref_bdd(&and);
-        self.manager.borrow_mut().deref_bdd(&acc);
-        and
+        self.manager.borrow_mut().and(&acc, &y)
       });
-    RuddyPredicate { bdd, engine: self }
+    Predicate::new(RuddyPredicate { bdd, engine: self })
   }
 }
 
-impl<'a> PredicateIO<'a> for RuddyPredicateEngine {
-  type P = RuddyPredicate<'a>;
-
-  fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Self::P> {
+impl<'a> PredicateEngine<'a, RuddyPredicate<'a>> for RuddyPredicateEngine {
+  fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Predicate<Self::P>> {
     if let Some(bdd) = self.manager.borrow_mut().read_buffer(buffer) {
       self.manager.borrow_mut().ref_bdd(&bdd);
-      Some(RuddyPredicate { bdd, engine: self })
+      Some(Predicate::new(RuddyPredicate { bdd, engine: self }))
     } else {
       None
     }
   }
 
-  fn write_buffer(&'a self, pred: &Self::P, buffer: &mut Vec<u8>) -> Option<usize> {
-    self.manager.borrow_mut().write_buffer(&pred.bdd, buffer)
+  fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Option<usize> {
+    self.manager.borrow_mut().write_buffer(&pred.0.bdd, buffer)
   }
 }
-
-impl<'a> PredicateEngine<'a, RuddyPredicate<'a>> for RuddyPredicateEngine {}
 
 #[derive(Copy, Clone)]
 pub struct RuddyPredicate<'a> {
@@ -132,100 +127,66 @@ impl PartialEq<Self> for RuddyPredicate<'_> {
   }
 }
 
-impl Not for RuddyPredicate<'_> {
-  type Output = Self;
+impl Eq for RuddyPredicate<'_> {}
 
-  fn not(self) -> Self::Output {
+impl Ord for RuddyPredicate<'_> {
+  fn cmp(&self, other: &Self) -> Ordering {
+    self.bdd.cmp(&other.bdd)
+  }
+}
+
+impl PartialOrd<Self> for RuddyPredicate<'_> {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl PredicateInner for RuddyPredicate<'_> {
+  fn not(&self) -> Self {
     let bdd = self.engine.manager.borrow_mut().not(&self.bdd);
-    self.engine.manager.borrow_mut().ref_bdd(&bdd);
-    self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
     RuddyPredicate {
       bdd,
       engine: self.engine,
     }
   }
-}
 
-impl BitAnd for RuddyPredicate<'_> {
-  type Output = Self;
-
-  fn bitand(self, rhs: Self) -> Self::Output {
+  fn and(&self, rhs: &Self) -> Self {
     let bdd = self.engine.manager.borrow_mut().and(&self.bdd, &rhs.bdd);
-    self.engine.manager.borrow_mut().ref_bdd(&bdd);
     RuddyPredicate {
       bdd,
       engine: self.engine,
     }
   }
-}
 
-impl BitAndAssign for RuddyPredicate<'_> {
-  fn bitand_assign(&mut self, rhs: Self) {
-    let bdd = self.engine.manager.borrow_mut().and(&self.bdd, &rhs.bdd);
-    self.engine.manager.borrow_mut().ref_bdd(&bdd);
-    self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-    self.bdd = bdd;
-    rhs.drop();
-  }
-}
-
-impl BitOr for RuddyPredicate<'_> {
-  type Output = Self;
-
-  fn bitor(self, rhs: Self) -> Self::Output {
+  fn or(&self, rhs: &Self) -> Self {
     let bdd = self.engine.manager.borrow_mut().or(&self.bdd, &rhs.bdd);
-    self.engine.manager.borrow_mut().ref_bdd(&bdd);
     RuddyPredicate {
       bdd,
       engine: self.engine,
     }
   }
-}
 
-impl BitOrAssign for RuddyPredicate<'_> {
-  fn bitor_assign(&mut self, rhs: Self) {
-    let bdd = self.engine.manager.borrow_mut().or(&self.bdd, &rhs.bdd);
-    self.engine.manager.borrow_mut().ref_bdd(&bdd);
-    self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-    self.bdd = bdd;
-    rhs.drop();
-  }
-}
-
-impl Sub for RuddyPredicate<'_> {
-  type Output = Self;
-
-  fn sub(self, rhs: Self) -> Self::Output {
+  fn comp(&self, rhs: &Self) -> Self {
     let bdd = self.engine.manager.borrow_mut().comp(&self.bdd, &rhs.bdd);
-    self.engine.manager.borrow_mut().ref_bdd(&bdd);
     RuddyPredicate {
       bdd,
       engine: self.engine,
     }
   }
-}
 
-impl SubAssign for RuddyPredicate<'_> {
-  fn sub_assign(&mut self, rhs: Self) {
-    let bdd = self.engine.manager.borrow_mut().comp(&self.bdd, &rhs.bdd);
-    self.engine.manager.borrow_mut().ref_bdd(&bdd);
-    self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
-    self.bdd = bdd;
-    rhs.drop();
-  }
-}
-
-impl PredicateOp for RuddyPredicate<'_> {
   fn is_empty(&self) -> bool {
     self.bdd == self.engine.manager.borrow().get_false()
   }
 
-  fn drop(self) {
+  fn _ref(self) -> Self {
+    self.engine.manager.borrow_mut().ref_bdd(&self.bdd);
+    self
+  }
+
+  fn _deref(&self) {
     self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
   }
 }
-
-impl Predicate for RuddyPredicate<'_> {}
 
 impl Display for RuddyPredicate<'_> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -273,11 +234,18 @@ impl Display for RuddyPredicate<'_> {
   }
 }
 
+impl Debug for RuddyPredicate<'_> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.write_fmt(format_args!("{}", self))
+  }
+}
+
 #[cfg(test)]
 mod tests {
-  use super::*;
   use crate::core::r#match::{ipv4_to_match, FieldMatch, Match};
   use crate::{fm_ipv4_from, fm_range_from};
+
+  use super::*;
 
   #[test]
   #[allow(unused_variables)]

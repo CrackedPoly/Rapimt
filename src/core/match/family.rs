@@ -3,7 +3,7 @@
 //! ## What is a match family?
 //! In packet processing, a match family is a set of fields that can be
 //! matched against a packet. For example, in the TCP 4-tuple match family
-//! [TcpT4Family](MatchFamily::TcpT4Family), the fields are (s_port, d_port, s_ip, d_ip).
+//! [TcpT4Family](MatchFamily::TcpT4Family), the fields are (sport, dport, sip, dip).
 //!
 //! ## What is it used for?
 //! We only need to know what fields are in a match family.

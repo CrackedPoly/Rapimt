@@ -1,14 +1,15 @@
+use std::hash::Hash;
+use std::ops::{Index, IndexMut};
+
 use crate::io::CodedAction;
 
-mod seq_action;
+pub mod seq_action;
 
-pub trait Actions<A: CodedAction> {
-  fn from(a: A) -> Self;
-  fn from_all(data: Vec<A>) -> Self;
-  fn get(&self, idx: usize) -> A;
-  fn get_all(&self) -> &[A];
-  fn resize(&self, to: usize, offset: usize) -> Self;
-  fn update(&mut self, idx: usize, value: A);
+pub trait Actions<A: CodedAction>:
+  From<Vec<A>> + Index<usize, Output = A> + IndexMut<usize, Output = A> + Hash + Eq
+{
+  fn len(&self) -> usize;
+  fn resize(&mut self, to: usize, offset: usize);
+  fn overwritten(&self, rhs: &Self) -> Self;
   fn diff(&self, rhs: &Self) -> usize;
-  fn overwrite(&self, rhs: &Self) -> Self;
 }

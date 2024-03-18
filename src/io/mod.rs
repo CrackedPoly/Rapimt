@@ -1,10 +1,14 @@
-pub mod default;
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
 
-use crate::core::im::Rule;
-use crate::core::r#match::{Predicate, PredicateEngine};
-use crate::io::basic::action::ActionType;
 use nom::error::{Error, ParseError};
 use nom::{Finish, IResult};
+
+use crate::core::r#match::Rule;
+use crate::core::r#match::{PredicateEngine, PredicateInner};
+use crate::io::basic::action::ActionType;
+
+pub mod default;
 
 /// UncodedAction is an action on a specific device, it should have rich
 /// information, and may not be fix-sized. It can be encoded by its
@@ -20,7 +24,10 @@ pub trait UncodedAction {
 /// that the number of actions on single device will not exceed 2^32.
 ///
 /// EncodedAction.into() == 0 means no overwrite
-pub trait CodedAction: Default + Sized + Copy + Into<u32> {}
+pub trait CodedAction:
+  Eq + PartialEq + Ord + PartialOrd + Display + Debug + Default + Hash + Sized + Copy + Into<u32>
+{
+}
 
 impl CodedAction for u32 {}
 
@@ -68,8 +75,8 @@ where
 /// ***The trait and the format are manufacture-specific.***
 pub trait FibLoader<'a, 'p, P, A = u32>
 where
-  Self: ActionEncoder<'a, A> + 'p,
-  P: Predicate + 'p,
+  Self: ActionEncoder<'a, A>,
+  P: PredicateInner + 'p,
   A: CodedAction,
 {
   fn _load<'x, 's: 'p, ME, Err>(

@@ -1,25 +1,28 @@
-use crate::core::im::Rule;
-use crate::core::r#match::{FieldMatch, Match, Predicate, PredicateEngine};
-use crate::io::basic::action::ActionType;
-use crate::io::basic::parser::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num, parse_port};
-use crate::io::{ActionEncoder, FibLoader, InstanceLoader, UncodedAction};
+use std::cell::RefCell;
+
 use indexmap::map::IndexMap;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{multispace0, multispace1};
-use nom::combinator::{all_consuming, map};
+use nom::combinator::{all_consuming, map, not};
 use nom::error::ErrorKind;
 use nom::error::ParseError;
 use nom::multi::{separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, preceded, separated_pair, tuple};
 use nom::IResult;
-use std::cell::RefCell;
+
+use crate::core::r#match::Rule;
+use crate::core::r#match::{FieldMatch, Match, PredicateEngine, PredicateInner};
+use crate::io::basic::action::ActionType;
+use crate::io::basic::parser::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num};
+use crate::io::{ActionEncoder, FibLoader, InstanceLoader, UncodedAction};
 
 struct NeighborInfo {
   name: String,
   external: bool,
 }
 
+#[derive(Debug)]
 struct PortInfo {
   name: String,
   mode: ActionType,
@@ -73,11 +76,12 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
   }
 
   fn lookup(&'a self, port_name: &str) -> Self::UA {
+    // since A == 0 means no overwrite, we can't use 0 as CodedAction
     self
       .ports
       .get_full(port_name)
       .map(|(idx, _, _)| TypedAction {
-        idx: idx as u32,
+        idx: idx as u32 + 1,
         origin: self,
       })
       .unwrap()
@@ -96,6 +100,15 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultParser {
   fn _load<'x, E: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), PortInfoBase, E> {
     let nbrs = RefCell::new(IndexMap::new());
     let ports = RefCell::new(IndexMap::new());
+    ports.borrow_mut().insert(
+      "drop".to_owned(),
+      PortInfo {
+        name: "drop".to_owned(),
+        mode: ActionType::DROP,
+        p_ports: vec![],
+      },
+    );
+
     let capture_nbr_info = |(port_name, nbr): (&str, NeighborInfo)| {
       ports.borrow_mut().insert(
         port_name.to_owned(),
@@ -110,6 +123,7 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultParser {
     let capture_port_info = |port: PortInfo| {
       ports.borrow_mut().insert(port.name.to_owned(), port);
     };
+
     let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
     let (rest, _) = separated_list0(
       multispace1,
@@ -143,6 +157,12 @@ fn parse_mode<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Ac
   }
 }
 
+pub fn parse_port<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
+  if let Ok(_) = not(alt((tag::<&str, &str, E>("port"), tag("neighbor"))))(input) {
+    return parse_ident(input);
+  }
+  Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Tag)))
+}
 fn parse_port_info<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PortInfo, E> {
   let (rest, _) = pair(tag("port"), multispace1)(input)?;
   let (rest, (port, _, mode, _, ports)) = tuple((
@@ -179,7 +199,7 @@ fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
   ))
 }
 
-impl<'a, 'p, P: Predicate + 'p> FibLoader<'a, 'p, P> for PortInfoBase {
+impl<'a, 'p, P: PredicateInner + 'p> FibLoader<'a, 'p, P> for PortInfoBase {
   fn _load<'x, 's: 'p, ME, Err>(
     &'s self,
     engine: &'p ME,
@@ -204,7 +224,7 @@ fn parse_ipv4_rule<'x, 'a: 'p, 'p: 'a, ME, AE, P, E>(
   action_encoder: &'a AE,
 ) -> impl Fn(&'x str) -> IResult<&'x str, Rule<P, u32>, E> + 'p + 'a
 where
-  P: Predicate + 'p,
+  P: PredicateInner + 'p,
   ME: PredicateEngine<'p, P>,
   AE: ActionEncoder<'a>,
   E: ParseError<&'x str>,
@@ -243,9 +263,10 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use crate::core::r#match::family::MatchFamily::Inet4Family;
   use crate::core::r#match::RuddyPredicateEngine;
+
+  use super::*;
 
   #[test]
   fn test_loaders() {
@@ -260,7 +281,7 @@ mod tests {
     let base = loader.load(spec).unwrap();
     assert_eq!(base.dev, "dev0");
     assert_eq!(base.nbrs.len(), 2);
-    assert_eq!(base.ports.len(), 4);
+    assert_eq!(base.ports.len(), 5);
 
     let n1 = base.nbrs.get("ge0").unwrap();
     assert_eq!(n1.name, "dev1");
@@ -304,10 +325,10 @@ mod tests {
     assert_eq!(rules.len(), 2);
     assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
     assert_eq!(rules[0].priority, 24);
-    assert_eq!(rules[0].action, 2);
+    assert_eq!(rules[0].action, 4);
     assert_eq!(rules[1].predicate.to_string(), "dip: 0.0.0.0/0");
     assert_eq!(rules[1].priority, 0);
-    assert_eq!(rules[1].action, 0);
+    assert_eq!(rules[1].action, 2);
   }
 
   #[test]
@@ -345,9 +366,10 @@ mod tests {
     assert_eq!(base.decode(a2).idx, 1);
     assert_eq!(base.decode(a3).idx, 2);
     assert_eq!(base.decode(a4).idx, 3);
-    assert_eq!(base.decode(a1).get_type(), ActionType::FORWARD);
-    assert_eq!(base.decode(a3).get_type(), ActionType::ECMP);
-    assert_eq!(base.decode(a4).get_type(), ActionType::FLOOD);
+    assert_eq!(base.decode(a1).get_type(), ActionType::DROP);
+    assert_eq!(base.decode(a2).get_type(), ActionType::FORWARD);
+    assert_eq!(base.decode(a3).get_type(), ActionType::FORWARD);
+    assert_eq!(base.decode(a4).get_type(), ActionType::ECMP);
     assert!(base.decode(a4).get_next_hops().contains(&"dev2"));
   }
 }
