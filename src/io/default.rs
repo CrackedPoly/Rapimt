@@ -17,6 +17,8 @@ use crate::io::basic::action::ActionType;
 use crate::io::basic::parser::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num};
 use crate::io::{ActionEncoder, FibLoader, InstanceLoader, UncodedAction};
 
+#[allow(dead_code)]
+#[derive(Debug)]
 struct NeighborInfo {
   name: String,
   external: bool,
@@ -29,12 +31,14 @@ struct PortInfo {
   p_ports: Vec<String>, // vector of physical port names
 }
 
+#[allow(dead_code)]
+#[derive(Debug)]
 pub struct PortInfoBase {
   dev: String,
   // port name -> neighbor info
   nbrs: IndexMap<String, NeighborInfo>,
   // port name -> port info
-  ports: IndexMap<String, PortInfo>,
+  ports: RefCell<IndexMap<String, PortInfo>>,
 }
 
 pub struct TypedAction<'a> {
@@ -44,14 +48,22 @@ pub struct TypedAction<'a> {
 
 impl<'o> UncodedAction for TypedAction<'o> {
   fn get_type(&self) -> ActionType {
-    self.origin.ports.get_index(self.idx as usize).unwrap().1.mode
+    self
+      .origin
+      .ports
+      .borrow()
+      .get_index(self.idx as usize -1)
+      .unwrap()
+      .1
+      .mode
   }
 
   fn get_next_hops(&self) -> Vec<&str> {
     self
       .origin
       .ports
-      .get_index(self.idx as usize)
+      .borrow()
+      .get_index(self.idx as usize - 1)
       .unwrap()
       .1
       .p_ports
@@ -77,33 +89,49 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
 
   fn lookup(&'a self, port_name: &str) -> Self::UA {
     // since A == 0 means no overwrite, we can't use 0 as CodedAction
-    self
+    let res = self
       .ports
+      .borrow()
       .get_full(port_name)
       .map(|(idx, _, _)| TypedAction {
         idx: idx as u32 + 1,
         origin: self,
-      })
-      .unwrap()
+      });
+    match res {
+      Some(a) => a,
+      None => {
+        let idx = self
+          .ports
+          .borrow_mut()
+          .insert_full(
+            port_name.to_owned(),
+            PortInfo {
+              name: port_name.to_owned(),
+              mode: ActionType::FORWARD,
+              p_ports: vec![port_name.to_owned()],
+            },
+          )
+          .0;
+        TypedAction {
+          idx: idx as u32 + 1,
+          origin: self,
+        }
+      }
+    }
   }
 }
 
-pub struct DefaultParser {}
+#[derive(Default)]
+pub struct DefaultInstLoader {}
 
-impl DefaultParser {
-  pub fn new() -> Self {
-    DefaultParser {}
-  }
-}
-
-impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultParser {
+impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultInstLoader {
   fn _load<'x, E: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), PortInfoBase, E> {
     let nbrs = RefCell::new(IndexMap::new());
     let ports = RefCell::new(IndexMap::new());
     ports.borrow_mut().insert(
-      "drop".to_owned(),
+      "self".to_owned(),
       PortInfo {
-        name: "drop".to_owned(),
+        name: "self".to_owned(),
         mode: ActionType::DROP,
         p_ports: vec![],
       },
@@ -133,14 +161,14 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultParser {
       )),
     )(rest)?;
     let (_, _) = all_consuming(multispace0)(rest)?;
-    return Ok((
+    Ok((
       (),
       PortInfoBase {
         dev: dev.to_string(),
         nbrs: nbrs.into_inner(),
-        ports: ports.into_inner(),
+        ports,
       },
-    ));
+    ))
   }
 }
 
@@ -158,7 +186,7 @@ fn parse_mode<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Ac
 }
 
 pub fn parse_port<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
-  if let Ok(_) = not(alt((tag::<&str, &str, E>("port"), tag("neighbor"))))(input) {
+  if not(alt((tag::<&str, &str, E>("port"), tag("neighbor"))))(input).is_ok() {
     return parse_ident(input);
   }
   Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Tag)))
@@ -237,7 +265,7 @@ where
       multispace1,
       map(parse_digits, |s: &str| s.parse::<u32>().unwrap()),
       multispace1,
-      map(parse_digits, |s: &str| s.parse::<u32>().unwrap()),
+      map(parse_digits, |s: &str| s.parse::<i32>().unwrap()),
       multispace1,
       parse_port,
     ))(input)?;
@@ -263,6 +291,8 @@ where
 
 #[cfg(test)]
 mod tests {
+  use std::borrow::Borrow;
+
   use crate::core::r#match::family::MatchFamily::Inet4Family;
   use crate::core::r#match::RuddyPredicateEngine;
 
@@ -270,7 +300,7 @@ mod tests {
 
   #[test]
   fn test_loaders() {
-    let loader = DefaultParser::new();
+    let loader = DefaultInstLoader::default();
     let spec = r#"
         name dev0
         neighbor ge0 dev1
@@ -281,32 +311,34 @@ mod tests {
     let base = loader.load(spec).unwrap();
     assert_eq!(base.dev, "dev0");
     assert_eq!(base.nbrs.len(), 2);
-    assert_eq!(base.ports.len(), 5);
+    assert_eq!(base.ports.borrow().len(), 5);
 
     let n1 = base.nbrs.get("ge0").unwrap();
     assert_eq!(n1.name, "dev1");
-    assert_eq!(n1.external, false);
+    assert!(!n1.external);
     let n2 = base.nbrs.get("ge1").unwrap();
     assert_eq!(n2.name, "dev2");
-    assert_eq!(n2.external, false);
+    assert!(!n2.external);
 
-    let p1 = base.ports.get("ge0").unwrap();
+    let bindings = base.ports.borrow();
+
+    let p1 = bindings.borrow().get("ge0").unwrap();
     assert_eq!(p1.name, "ge0");
     assert_eq!(p1.mode, ActionType::FORWARD);
     assert_eq!(p1.p_ports.len(), 1);
     assert_eq!(p1.p_ports[0], "ge0");
-    let p2 = base.ports.get("ge1").unwrap();
+    let p2 = bindings.borrow().get("ge1").unwrap();
     assert_eq!(p2.name, "ge1");
     assert_eq!(p2.mode, ActionType::FORWARD);
     assert_eq!(p2.p_ports.len(), 1);
     assert_eq!(p2.p_ports[0], "ge1");
-    let p3 = base.ports.get("gi0").unwrap();
+    let p3 = bindings.borrow().get("gi0").unwrap();
     assert_eq!(p3.name, "gi0");
     assert_eq!(p3.mode, ActionType::ECMP);
     assert_eq!(p3.p_ports.len(), 2);
     assert_eq!(p3.p_ports[0], "ge0");
     assert_eq!(p3.p_ports[1], "ge1");
-    let p4 = base.ports.get("gi1").unwrap();
+    let p4 = bindings.borrow().get("gi1").unwrap();
     assert_eq!(p4.name, "gi1");
     assert_eq!(p4.mode, ActionType::FLOOD);
     assert_eq!(p4.p_ports.len(), 2);
@@ -318,7 +350,7 @@ mod tests {
         fw 192.168.1.0 24 24 gi0
         fw 0.0.0.0 0 0 ge0
         "#;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(1000, 100, Inet4Family);
     let (dev, rules) = base.load(&engine, fib).unwrap();
     assert_eq!(dev, "dev0");
@@ -333,7 +365,7 @@ mod tests {
 
   #[test]
   fn test_action_encoder() {
-    let loader = DefaultParser::new();
+    let loader = DefaultInstLoader::default();
     let content = r#"
         name dev0
         neighbor ge0 dev1
@@ -343,29 +375,29 @@ mod tests {
         "#;
     let base = loader.load(content).unwrap();
     let a1 = base.encode(TypedAction {
-      idx: 0,
-      origin: &base,
-    });
-    let a2 = base.encode(TypedAction {
       idx: 1,
       origin: &base,
     });
-    let a3 = base.encode(TypedAction {
+    let a2 = base.encode(TypedAction {
       idx: 2,
       origin: &base,
     });
-    let a4 = base.encode(TypedAction {
+    let a3 = base.encode(TypedAction {
       idx: 3,
       origin: &base,
     });
-    assert_eq!(a1, 0);
-    assert_eq!(a2, 1);
-    assert_eq!(a3, 2);
-    assert_eq!(a4, 3);
-    assert_eq!(base.decode(a1).idx, 0);
-    assert_eq!(base.decode(a2).idx, 1);
-    assert_eq!(base.decode(a3).idx, 2);
-    assert_eq!(base.decode(a4).idx, 3);
+    let a4 = base.encode(TypedAction {
+      idx: 4,
+      origin: &base,
+    });
+    assert_eq!(a1, 1);
+    assert_eq!(a2, 2);
+    assert_eq!(a3, 3);
+    assert_eq!(a4, 4);
+    assert_eq!(base.decode(a1).idx, 1);
+    assert_eq!(base.decode(a2).idx, 2);
+    assert_eq!(base.decode(a3).idx, 3);
+    assert_eq!(base.decode(a4).idx, 4);
     assert_eq!(base.decode(a1).get_type(), ActionType::DROP);
     assert_eq!(base.decode(a2).get_type(), ActionType::FORWARD);
     assert_eq!(base.decode(a3).get_type(), ActionType::FORWARD);

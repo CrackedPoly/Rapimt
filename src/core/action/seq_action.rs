@@ -51,7 +51,7 @@ impl<A: CodedAction> Actions<A> for SeqActions<A> {
     let n_dim = self.0.len();
     let mut new_actions = Vec::with_capacity(self.0.capacity());
     for i in 0..n_dim {
-      if rhs[i].into() != 0 {
+      if rhs[i] != A::default() {
         new_actions.push(rhs[i]);
       } else {
         new_actions.push(self[i]);
@@ -69,7 +69,7 @@ impl<A: CodedAction> Actions<A> for SeqActions<A> {
         diff += 1;
       }
     }
-    return diff;
+    diff
   }
 }
 

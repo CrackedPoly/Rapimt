@@ -9,6 +9,8 @@ use crate::core::r#match::Rule;
 use crate::core::r#match::{MaskedValue, MatchEncoder, Predicate, PredicateInner};
 use crate::io::{ActionEncoder, CodedAction, UncodedAction};
 
+#[allow(dead_code)]
+#[derive(Debug)]
 pub struct DefaultFibMonitor<'a, 'p, P, ME, A, AE>
 where
   P: PredicateInner,
@@ -72,15 +74,16 @@ where
   A: CodedAction,
   AE: ActionEncoder<'a, A, UA = UA>,
 {
-  fn new(engine: &'p ME, codex: &'a AE) -> Self {
+  pub fn new(engine: &'p ME, codex: &'a AE) -> Self {
     let drop_rule = Rule {
-      priority: 0,
-      action: codex.encode(codex.lookup("drop")),
+      priority: -1,
+      action: codex.encode(codex.lookup("self")),
       predicate: engine.one(),
       origin: vec![MaskedValue::from((0u32, 0u32))],
     };
-    let rules = BTreeSet::new();
-    let i_rules = vec![Rc::new(drop_rule)];
+    let mut rules = BTreeSet::new();
+    rules.insert(Rc::new(drop_rule));
+    let i_rules = Vec::new();
     let d_rules = Vec::new();
     let local_ap = HashMap::new();
     DefaultFibMonitor {
@@ -170,11 +173,11 @@ where
 #[cfg(test)]
 mod test {
   use crate::core::action::seq_action::SeqActions;
-  use crate::core::im::default::DefaultFibMonitor;
+  use crate::core::im::monitor::DefaultFibMonitor;
   use crate::core::im::FibMonitor;
   use crate::core::r#match::family::MatchFamily;
   use crate::core::r#match::RuddyPredicateEngine;
-  use crate::io::default::DefaultParser;
+  use crate::io::default::DefaultInstLoader;
   use crate::io::{FibLoader, InstanceLoader};
 
   #[test]
@@ -192,19 +195,19 @@ mod test {
         fw 0.0.0.0 0 0 ge0
         "#;
     // load port information
-    let parser = DefaultParser::new();
+    let parser = DefaultInstLoader::default();
     let codex = InstanceLoader::load(&parser, spec).unwrap();
 
     // load fibs
     let family = MatchFamily::Inet4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(1000, 100, family);
     let (_, fibs) = FibLoader::load(&codex, &engine, fib).unwrap();
 
     // setup fib monitor
     let mut fib_monitor = DefaultFibMonitor::new(&engine, &codex);
 
-    // default "drop" rule as incremental update
+    // default "drop" ("self") rule as incremental update
     let im = fib_monitor.update::<SeqActions<u32>>(vec![], vec![]);
     assert_eq!(im.size, 1);
     // two rules as an incremental update, one is no overwrite, another is overwriting 192.168.1.0/24

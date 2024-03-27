@@ -13,17 +13,19 @@ pub struct RuddyPredicateEngine {
   family: MatchFamily,
 }
 
-impl RuddyPredicateEngine {
+impl Default for RuddyPredicateEngine {
   /// Get a new RuddyPredicateEngine. You MUST call [init][RuddyPredicateEngine::init]
   /// before using the engine.
-  pub fn new() -> Self {
+  fn default() -> Self {
     Self {
       manager: RefCell::new(Ruddy::new()),
       var_pair: Vec::new(),
       family: MatchFamily::Inet4Family,
     }
   }
+}
 
+impl RuddyPredicateEngine {
   /// Initialize the RuddyPredicateEngine with the given node_num, cache_size
   /// and family. As to the concrete number of these parameters, node_num
   /// does not need to be very large, it will grow inside automatically when
@@ -198,8 +200,8 @@ impl Display for RuddyPredicate<'_> {
       }
       // remove tailing '\n'
       let str = str.trim_end();
-      return if str.contains("\n") {
-        let ss: Vec<String> = str.split("\n").map(|s| s.to_string()).collect();
+      return if str.contains('\n') {
+        let ss: Vec<String> = str.split('\n').map(|s| s.to_string()).collect();
         let ps: Vec<String> = ss.iter().map(|s| to_prefix(s.to_string(), offset)).collect();
         ps.join(" OR ")
       } else {
@@ -252,7 +254,7 @@ mod tests {
   fn test_ruddy_encode() {
     // 1. choose the family and initialize the engine
     let family = MatchFamily::Inet4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(100, 10, family);
 
     // 2. encode the field value to get a predicate
@@ -268,7 +270,7 @@ mod tests {
   #[test]
   fn test_ruddy_not() {
     let family = MatchFamily::Inet4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(100, 10, family);
     let (p, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/24"));
     let not = !p;
@@ -279,7 +281,7 @@ mod tests {
   #[test]
   fn test_ruddy_or() {
     let family = MatchFamily::Inet4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(100, 10, family);
     let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/24"));
     let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/24"));
@@ -290,7 +292,7 @@ mod tests {
   #[test]
   fn test_ruddy_and() {
     let family = MatchFamily::Inet4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(100, 10, family);
     let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/24"));
     let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/28"));
@@ -301,7 +303,7 @@ mod tests {
   #[test]
   fn test_ruddy_comp() {
     let family = MatchFamily::Inet4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(100, 10, family);
     let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/23"));
     let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.0.0/24"));
@@ -312,7 +314,7 @@ mod tests {
   #[test]
   fn test_ruddy_gc() {
     let family = MatchFamily::Inet4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(100, 10, family);
     let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "64.0.0.0/2"));
     let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.0.0.0/2"));
@@ -328,7 +330,7 @@ mod tests {
   #[test]
   fn test_range_encode() {
     let family = MatchFamily::TcpT4Family;
-    let mut engine = RuddyPredicateEngine::new();
+    let mut engine = RuddyPredicateEngine::default();
     engine.init(1000, 100, family);
     let fm0 = fm_range_from!("sport", 123, 147);
     let (_, mvs) = engine.encode_match(fm0);

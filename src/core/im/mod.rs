@@ -7,7 +7,7 @@ use crate::core::action::Actions;
 use crate::core::r#match::{Predicate, PredicateInner, Rule};
 use crate::io::CodedAction;
 
-pub mod default;
+pub mod monitor;
 
 pub trait FibMonitor<P: PredicateInner, A: CodedAction> {
   fn clear(&mut self);
@@ -26,8 +26,8 @@ pub trait FibMonitor<P: PredicateInner, A: CodedAction> {
 
 #[derive(Debug)]
 pub struct ModelEntry<P: PredicateInner, A: CodedAction, As: Actions<A>> {
-  actions: As,
-  predicate: Predicate<P>,
+  pub actions: As,
+  pub predicate: Predicate<P>,
   _phantom: PhantomData<A>,
 }
 
@@ -109,6 +109,7 @@ where
         _phantom: PhantomData,
       });
     });
+    self.size = self.data.len();
   }
 }
 
@@ -118,11 +119,26 @@ where
   A: CodedAction,
   As: Actions<A>,
 {
-  fn resize(&mut self, to: usize, offset: usize) {
-    assert!(to > offset + self.n_dim);
+  pub fn resize(&mut self, to: usize, offset: usize) {
+    assert!(to >= offset + self.n_dim);
     self.n_dim = to;
     for i in 0..self.size {
       self.data[i].actions.resize(to, offset);
+    }
+  }
+}
+
+impl<P, A, As> Default for InverseModel<P, A, As>
+where
+  P: PredicateInner,
+  A: CodedAction,
+  As: Actions<A>,
+{
+  fn default() -> Self {
+    InverseModel {
+      n_dim: 0,
+      size: 0,
+      data: vec![],
     }
   }
 }

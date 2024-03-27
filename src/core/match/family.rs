@@ -109,11 +109,6 @@ impl FamilyDecl for MatchFamily {
 
   fn get_field_declaration(&self, name: String) -> Option<&FieldDeclaration> {
     let fields = self.get_fields();
-    for f in fields.iter() {
-      if f.name == name {
-        return Some(f);
-      }
-    }
-    return None;
+    fields.iter().find(|f| f.name == name)
   }
 }

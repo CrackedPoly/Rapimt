@@ -19,7 +19,7 @@
 //! use crate::fast_imt::fm_ipv4_from;
 //!
 //! // Initialize the engine
-//! let mut engine = RuddyPredicateEngine::new();
+//! let mut engine = RuddyPredicateEngine::default();
 //! let family = MatchFamily::TcpT4Family;
 //! engine.init(1000, 100, family);
 //!
@@ -122,10 +122,10 @@ where
             loop {
               let t_zeros = low.trailing_zeros();
               let mut inc: u128 = 1 << t_zeros;
-              low = low + inc;
+              low += inc;
               while low - 1 > high {
-                inc = inc >> 1;
-                low = low - inc;
+                inc >>= 1;
+                low -= inc;
               }
               let t_zeros = inc.trailing_zeros();
               vm_pairs.push((low - inc, (mask >> t_zeros) << t_zeros));
@@ -223,7 +223,7 @@ pub trait PredicateInner: Copy + Eq + PartialEq + Ord + PartialOrd + Display + D
 /// }
 ///
 /// let family = MatchFamily::Inet4Family;
-/// let mut engine = RuddyPredicateEngine::new();
+/// let mut engine = RuddyPredicateEngine::default();
 /// engine.init(100, 10, family);
 ///
 /// // p2, p3 are dropped and should no longer be used afterward
@@ -414,7 +414,7 @@ impl<P: PredicateInner> SubAssign<&Self> for Predicate<P> {
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct Rule<P: PredicateInner, A: CodedAction = u32> {
-  pub priority: u32,
+  pub priority: i32,
   pub action: A,
   pub predicate: Predicate<P>,
   pub origin: Vec<MaskedValue>,

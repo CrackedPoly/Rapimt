@@ -13,5 +13,7 @@ indexmap = "2.2.5"
 rug = "1.24.0"
 
 [profile.dev]
+# Remember to enable this for a great improvement
+# opt-level = 3
 overflow-checks = false
 
