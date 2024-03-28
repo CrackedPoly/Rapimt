@@ -1,13 +1,7 @@
 # Rast-IMT
 
-<!--toc:start-->
-- [Rast-IMT](#rast-imt)
-  - [Introduction](#introduction)
-  - [Installation](#installation)
-  - [TODO List](#todo-list)
-  - [Reference](#reference)
-  - [License](#license)
-<!--toc:end-->
+[![Test](https://github.com/CrackedPoly/Rast-imt/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/CrackedPoly/Rast-imt/actions/workflows/tests.yml)
+[![Docs](https://github.com/CrackedPoly/Rast-imt/actions/workflows/docs.yml/badge.svg)](https://github.com/CrackedPoly/Rast-imt/actions/workflows/docs.yml)
 
 Fast-IMT (Inverse Model Transformation) in Rust
 
