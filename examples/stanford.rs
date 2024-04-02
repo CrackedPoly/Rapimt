@@ -1,3 +1,4 @@
+use fast_imt::core::action::seq_action::SeqActions;
 use fast_imt::core::im::monitor::DefaultFibMonitor;
 use fast_imt::core::im::{FibMonitor, InverseModel};
 use fast_imt::core::r#match::family::MatchFamily;
@@ -6,13 +7,12 @@ use fast_imt::io::default::{DefaultInstLoader, PortInfoBase};
 use fast_imt::io::{FibLoader, InstanceLoader};
 use std::collections::HashMap;
 use std::time::SystemTime;
-use fast_imt::core::action::seq_action::SeqActions;
 
 fn main() {
   let mut engine = RuddyPredicateEngine::default();
   let family = MatchFamily::Inet4Family;
   engine.init(1000, 100, family);
-  let parser = DefaultInstLoader { };
+  let parser = DefaultInstLoader {};
 
   let devs = std::fs::read_dir("examples/stanford/fib")
     .unwrap()
@@ -32,9 +32,10 @@ fn main() {
     })
     .collect();
 
+  let size = codexs.len();
   let mut monitors: HashMap<String, DefaultFibMonitor<_, _, _, _>> = codexs
     .iter()
-    .map(|(k, codex)| (k.clone(), DefaultFibMonitor::new(&engine, codex)))
+    .map(|(k, codex)| (k.clone(), DefaultFibMonitor::new(&engine, codex, size)))
     .collect();
 
   let mut monitor_timer = 0u128;

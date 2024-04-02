@@ -1,7 +1,7 @@
 use std::hash::Hash;
 use std::ops::{Index, IndexMut};
 
-use crate::core::action::Actions;
+use crate::core::action::CodedActions;
 use crate::io::CodedAction;
 
 #[derive(Eq, PartialEq, Hash, Debug)]
@@ -27,7 +27,7 @@ impl<A: CodedAction> IndexMut<usize> for SeqActions<A> {
   }
 }
 
-impl<A: CodedAction> Actions<A> for SeqActions<A> {
+impl<A: CodedAction> CodedActions<A> for SeqActions<A> {
   fn len(&self) -> usize {
     self.0.len()
   }

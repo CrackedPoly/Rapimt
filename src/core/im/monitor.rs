@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::core::action::Actions;
+use crate::core::action::CodedActions;
 use crate::core::im::{FibMonitor, InverseModel, ModelEntry};
 use crate::core::r#match::Rule;
 use crate::core::r#match::{MaskedValue, MatchEncoder, Predicate, PredicateInner};
@@ -24,6 +24,7 @@ where
   rules: BTreeSet<Rc<Rule<P, A>>>,
   i_rules: Vec<Rc<Rule<P, A>>>,
   d_rules: Vec<Rule<P, A>>,
+  dim_hint: usize,
 }
 
 impl<'a, 'p, P, ME, A, AE> FibMonitor<P, A> for DefaultFibMonitor<'a, 'p, P, ME, A, AE>
@@ -39,7 +40,7 @@ where
     self.d_rules.clear();
   }
 
-  fn update<As: Actions<A>>(
+  fn update<As: CodedActions<A>>(
     &mut self,
     insertion: Vec<Rule<P, A>>,
     deletion: Vec<Rule<P, A>>,
@@ -74,7 +75,7 @@ where
   A: CodedAction,
   AE: ActionEncoder<'a, A, UA = UA>,
 {
-  pub fn new(engine: &'p ME, codex: &'a AE) -> Self {
+  pub fn new(engine: &'p ME, codex: &'a AE, dim_hint: usize) -> Self {
     let drop_rule = Rule {
       priority: -1,
       action: codex.encode(codex.lookup("self")),
@@ -93,6 +94,7 @@ where
       rules,
       i_rules,
       d_rules,
+      dim_hint,
     }
   }
 
@@ -153,12 +155,18 @@ where
     self.d_rules.clear();
   }
 
-  fn current<As: Actions<A>>(&self) -> InverseModel<P, A, As> {
+  fn current<As: CodedActions<A>>(&self) -> InverseModel<P, A, As> {
     self
       .local_ap
       .iter()
       .map(|(a, p)| {
-        let actions = As::from(vec![*a]);
+        let actions = if self.dim_hint > 0 {
+          let mut vec = Vec::with_capacity(self.dim_hint);
+          vec.push(*a);
+          As::from(vec)
+        } else {
+          As::from(vec![*a])
+        };
         ModelEntry {
           actions,
           predicate: p.clone(),
@@ -205,7 +213,7 @@ mod test {
     let (_, fibs) = FibLoader::load(&codex, &engine, fib).unwrap();
 
     // setup fib monitor
-    let mut fib_monitor = DefaultFibMonitor::new(&engine, &codex);
+    let mut fib_monitor = DefaultFibMonitor::new(&engine, &codex, 0);
 
     // default "drop" ("self") rule as incremental update
     let im = fib_monitor.update::<SeqActions<u32>>(vec![], vec![]);

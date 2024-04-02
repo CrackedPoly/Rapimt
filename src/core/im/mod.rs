@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::ShlAssign;
 
-use crate::core::action::Actions;
+use crate::core::action::CodedActions;
 use crate::core::r#match::{Predicate, PredicateInner, Rule};
 use crate::io::CodedAction;
 
@@ -11,28 +11,28 @@ pub mod monitor;
 
 pub trait FibMonitor<P: PredicateInner, A: CodedAction> {
   fn clear(&mut self);
-  fn update<As: Actions<A>>(
+  fn update<As: CodedActions<A>>(
     &mut self,
     insertion: Vec<Rule<P, A>>,
     deletion: Vec<Rule<P, A>>,
   ) -> InverseModel<P, A, As>;
-  fn insert<As: Actions<A>>(&mut self, insertion: Vec<Rule<P, A>>) -> InverseModel<P, A, As> {
+  fn insert<As: CodedActions<A>>(&mut self, insertion: Vec<Rule<P, A>>) -> InverseModel<P, A, As> {
     self.update(insertion, vec![])
   }
-  fn delete<As: Actions<A>>(&mut self, deletion: Vec<Rule<P, A>>) -> InverseModel<P, A, As> {
+  fn delete<As: CodedActions<A>>(&mut self, deletion: Vec<Rule<P, A>>) -> InverseModel<P, A, As> {
     self.update(vec![], deletion)
   }
 }
 
 #[derive(Debug)]
-pub struct ModelEntry<P: PredicateInner, A: CodedAction, As: Actions<A>> {
+pub struct ModelEntry<P: PredicateInner, A: CodedAction, As: CodedActions<A>> {
   pub actions: As,
   pub predicate: Predicate<P>,
   _phantom: PhantomData<A>,
 }
 
 #[derive(Debug)]
-pub struct InverseModel<P: PredicateInner, A: CodedAction, As: Actions<A>> {
+pub struct InverseModel<P: PredicateInner, A: CodedAction, As: CodedActions<A>> {
   pub n_dim: usize,
   pub size: usize,
   pub data: Vec<ModelEntry<P, A, As>>,
@@ -42,7 +42,7 @@ impl<P, As, A> From<ModelEntry<P, A, As>> for InverseModel<P, A, As>
 where
   P: PredicateInner,
   A: CodedAction,
-  As: Actions<A>,
+  As: CodedActions<A>,
 {
   fn from(value: ModelEntry<P, A, As>) -> Self {
     InverseModel {
@@ -57,7 +57,7 @@ impl<P, As, A> From<Vec<ModelEntry<P, A, As>>> for InverseModel<P, A, As>
 where
   P: PredicateInner,
   A: CodedAction,
-  As: Actions<A>,
+  As: CodedActions<A>,
 {
   fn from(value: Vec<ModelEntry<P, A, As>>) -> Self {
     InverseModel {
@@ -72,7 +72,7 @@ impl<P, A, As> ShlAssign for InverseModel<P, A, As>
 where
   P: PredicateInner,
   A: CodedAction,
-  As: Actions<A>,
+  As: CodedActions<A>,
 {
   fn shl_assign(&mut self, rhs: Self) {
     if self.size == 0 {
@@ -117,7 +117,7 @@ impl<P, A, As> InverseModel<P, A, As>
 where
   P: PredicateInner,
   A: CodedAction,
-  As: Actions<A>,
+  As: CodedActions<A>,
 {
   pub fn resize(&mut self, to: usize, offset: usize) {
     assert!(to >= offset + self.n_dim);
@@ -132,7 +132,7 @@ impl<P, A, As> Default for InverseModel<P, A, As>
 where
   P: PredicateInner,
   A: CodedAction,
-  As: Actions<A>,
+  As: CodedActions<A>,
 {
   fn default() -> Self {
     InverseModel {
