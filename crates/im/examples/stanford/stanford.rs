@@ -1,12 +1,13 @@
-use fast_imt::core::action::seq_action::SeqActions;
-use fast_imt::core::im::monitor::DefaultFibMonitor;
-use fast_imt::core::im::{FibMonitor, InverseModel};
-use fast_imt::core::r#match::family::MatchFamily;
-use fast_imt::core::r#match::RuddyPredicateEngine;
-use fast_imt::io::default::{DefaultInstLoader, PortInfoBase};
-use fast_imt::io::{FibLoader, InstanceLoader};
-use std::collections::HashMap;
-use std::time::SystemTime;
+use std::{collections::HashMap, time::SystemTime};
+
+use rapimt_core::{
+    action::seq_action::SeqActions, r#match::engine::RuddyPredicateEngine,
+    r#match::family::MatchFamily,
+};
+use rapimt_im::{DefaultFibMonitor, FibMonitor, InverseModel};
+use rapimt_io::{
+    {DefaultInstLoader, PortInfoBase}, {FibLoader, InstanceLoader},
+};
 
 fn main() {
     let mut engine = RuddyPredicateEngine::default();

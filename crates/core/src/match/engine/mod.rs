@@ -6,4 +6,5 @@
 //! to express the match condition.
 //!
 
-pub mod ruddy_engine;
+mod ruddy_engine;
+pub use ruddy_engine::RuddyPredicateEngine;

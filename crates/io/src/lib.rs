@@ -1,51 +1,17 @@
-use std::fmt::{Debug, Display};
-use std::hash::Hash;
+mod default;
 
-use nom::error::{Error, ParseError};
-use nom::{Finish, IResult};
+use nom::{
+    error::{Error, ParseError},
+    {Finish, IResult},
+};
 
-use crate::core::r#match::Rule;
-use crate::core::r#match::{PredicateEngine, PredicateInner};
-use crate::io::basic::action::ActionType;
+use rapimt_core::{
+    action::{ActionEncoder, CodedAction, UncodedAction},
+    r#match::Rule,
+    r#match::{PredicateEngine, PredicateInner},
+};
 
-pub mod default;
-
-/// UncodedAction is an action on a specific device, it should have rich information such as device
-/// name, forwrading mode, next hops, and may not be fix-sized. It can be encoded by an action
-/// encoder that represents the device.
-///
-/// ***This trait is manufacture-specific.***
-pub trait UncodedAction {
-    fn get_type(&self) -> ActionType;
-    fn get_next_hops(&self) -> Vec<&str>;
-}
-
-/// CodedAction should have fixed size and can live in stack to achieve better performance.
-/// [Default] trait implementation default() should return a value that represents no action
-/// overwrite, refer to Fast-IMT theory for more information.
-///
-/// ***It seems an integer is sufficient, but we leave this trait for flexibility***
-pub trait CodedAction:
-    Eq + PartialEq + Ord + PartialOrd + Display + Debug + Default + Hash + Sized + Copy
-{
-}
-
-impl CodedAction for u32 {}
-
-/// ActionEncoder is essentially an instance that has all information about this device's topology
-/// (name, ports, port mode, neighbors), it can encode/decode raw action into/from CodedAction
-/// (which is more compact), and lookup the action by port name.
-///
-/// ***This trait is manufacture-specific.***
-pub trait ActionEncoder<'a, A: CodedAction = u32>
-where
-    Self: 'a,
-{
-    type UA: UncodedAction + 'a;
-    fn encode(&'a self, action: Self::UA) -> A;
-    fn decode(&'a self, coded_action: A) -> Self::UA;
-    fn lookup(&'a self, port_name: &str) -> Self::UA;
-}
+pub use default::{DefaultInstLoader, TypedAction, PortInfoBase};
 
 /// InstanceLoader is a parser that can parse the topology file load an instance (ActionEncoder)
 /// according to some format.
@@ -108,7 +74,7 @@ where
     }
 }
 
-/// basics for io
+/// Basics for io
 pub mod basic {
     /// Basic helper functions for parsing
     pub mod parser {
@@ -130,7 +96,7 @@ pub mod basic {
         }
 
         #[allow(dead_code)]
-        pub struct FimtIOError<I> {
+        pub struct IOError<I> {
             kind: IoErrorKind,
             nom_error: NomError<I>,
         }
@@ -226,18 +192,6 @@ pub mod basic {
             } else {
                 Err(Error(E::from_error_kind(input, ErrorKind::Digit)))
             }
-        }
-    }
-
-    /// Basic action types.
-    pub mod action {
-        #[derive(Debug, Clone, Copy, PartialEq)]
-        pub enum ActionType {
-            DROP = 0,
-            FORWARD = 1,
-            FLOOD = 2,
-            ECMP = 3,
-            FAILOVER = 4,
         }
     }
 }

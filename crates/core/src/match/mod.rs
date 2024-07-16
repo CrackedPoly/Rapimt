@@ -13,10 +13,14 @@
 //!
 //! ## Example
 //! ```no_run
-//! use fast_imt::core::r#match::{Predicate, PredicateEngine, MatchEncoder,
-//! RuddyPredicateEngine, ipv4_to_match, FieldMatch};
-//! use fast_imt::core::r#match::family::{MatchFamily};
-//! use crate::fast_imt::fm_ipv4_from;
+//! use rapimt_core::{
+//!     fm_ipv4_from, ipv4_to_match,
+//!     r#match::{
+//!         Predicate, PredicateEngine, MatchEncoder,
+//!         engine::RuddyPredicateEngine, FieldMatch,
+//!         family::{MatchFamily}
+//!     }
+//! };
 //!
 //! // Initialize the engine
 //! let mut engine = RuddyPredicateEngine::default();
@@ -33,22 +37,23 @@
 //! let p3 = p1 & p2;
 //! ```
 
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
-
-use rug::Integer;
-
-pub use engine::ruddy_engine::RuddyPredicateEngine;
-use family::{FamilyDecl, MatchFamily};
-pub use macros::ipv4_to_match;
-
-use crate::io::CodedAction;
-
 pub mod engine;
 pub mod family;
 
+use std::{
+    fmt::{Debug, Display, Formatter},
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign},
+    hash::Hash,
+};
+
+use crate::action::CodedAction;
+use bitvec::prelude::*;
+
+use family::{FamilyDecl, HeaderBitStore, HeaderBitOrder, MatchFamily, HEADERSTORENUM};
+
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
+// No field should exceed 128 bits for now, so u128 should be adequate.
 pub enum Match {
     ExactMatch { value: u128 },
     TernaryMatch { value: u128, mask: u128 },
@@ -61,18 +66,56 @@ pub struct FieldMatch {
     pub cond: Match,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Hash, Default, Clone, Copy)]
 pub struct MaskedValue {
-    pub value: Integer,
-    pub mask: Integer,
+    // #[cfg(target_header="inet4")]
+    pub value: BitArray<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder>,
+    // #[cfg(target_header="inet4")]
+    pub mask: BitArray<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder>,
 }
 
-impl<'a> BitOr for &'a MaskedValue {
+impl Debug for MaskedValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:} / {:}", self.value, self.mask)
+    }
+}
+
+impl BitOr for MaskedValue {
     type Output = MaskedValue;
     fn bitor(self, rhs: Self) -> Self::Output {
         MaskedValue {
-            value: Integer::from(&self.value | &rhs.value),
-            mask: Integer::from(&self.mask & &rhs.mask),
+            // #[cfg(target_header="inet4")]
+            value: self.value | rhs.value,
+            // #[cfg(target_header="inet4")]
+            mask: self.mask & rhs.mask,
+        }
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! impl_masked_value_from {
+($($t:ty),*) => {
+        $(
+            impl From<($t, $t)> for MaskedValue {
+                fn from(pair: ($t, $t)) -> Self {
+                    MaskedValue {
+                        value: BitArray::new(pair.0),
+                        mask: BitArray::new(pair.1),
+                    }
+                }
+            }
+        )*
+    };
+}
+
+// #[cfg(target_stack="inet4")]
+impl From<(u128, u128)> for MaskedValue {
+    fn from(pair: (u128, u128)) -> Self {
+        MaskedValue {
+            // #[cfg(target_stack="inet4")]
+            value: BitArray::new([pair.0 as u32]),
+            // #[cfg(target_stack="inet4")]
+            mask: BitArray::new([pair.1 as u32]),
         }
     }
 }
@@ -145,7 +188,7 @@ where
                     }
                 };
             }
-            _ => (self.one(), vec![MaskedValue::from((0u32, 0u32))]),
+            _ => (self.one(), vec![MaskedValue::from((0u128, 0u128))]),
         }
     }
 
@@ -162,7 +205,7 @@ where
                 let mut new_mvs = vec![];
                 for mv in mvs.iter() {
                     for sub_mv in sub_mvs.iter() {
-                        new_mvs.push(mv | sub_mv);
+                        new_mvs.push(*mv | *sub_mv);
                     }
                 }
                 mvs = new_mvs;
@@ -172,7 +215,9 @@ where
     }
 }
 
-pub trait PredicateInner: Copy + Eq + PartialEq + Ord + PartialOrd + Display + Debug {
+pub trait PredicateInner:
+    Copy + Eq + PartialEq + Ord + PartialOrd + Hash + Display + Debug
+{
     fn not(&self) -> Self;
     fn and(&self, rhs: &Self) -> Self;
     fn or(&self, rhs: &Self) -> Self;
@@ -209,10 +254,14 @@ pub trait PredicateInner: Copy + Eq + PartialEq + Ord + PartialOrd + Display + D
 /// # Examples
 /// This example demonstrates how to use the `&` and `&=` like methods.
 /// ```no_run
-/// use fast_imt::core::r#match::{RuddyPredicateEngine, FieldMatch,
-/// MatchEncoder, PredicateInner, Predicate, ipv4_to_match};
-/// use fast_imt::core::r#match::family::{MatchFamily};
-/// use crate::fast_imt::fm_ipv4_from;
+/// use rapimt_core::{
+///     fm_ipv4_from, ipv4_to_match,
+///     r#match::{
+///         Predicate, PredicateEngine, MatchEncoder, PredicateInner,
+///         engine::RuddyPredicateEngine, FieldMatch,
+///         family::{MatchFamily}
+///     }
+/// };
 ///
 /// fn get_predicates<T: PredicateInner>(engine: &dyn MatchEncoder<P=T>)-> [Predicate<T>;3] {
 ///     [
@@ -245,7 +294,7 @@ pub trait PredicateInner: Copy + Eq + PartialEq + Ord + PartialOrd + Display + D
 ///    }
 /// }
 // ```
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+#[derive(Ord, PartialOrd, Hash, Eq, PartialEq, Debug)]
 pub struct Predicate<P: PredicateInner>(P);
 
 impl<P: PredicateInner> Predicate<P> {
@@ -412,7 +461,7 @@ impl<P: PredicateInner> SubAssign<&Self> for Predicate<P> {
     }
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Hash, Debug)]
 pub struct Rule<P: PredicateInner, A: CodedAction = u32> {
     pub priority: i32,
     pub action: A,
@@ -436,25 +485,14 @@ impl<P: PredicateInner, A: CodedAction> Ord for Rule<P, A> {
     }
 }
 
-macro_rules! impl_masked_value_from {
-($($t:ty),*) => {
-        $(
-            impl From<($t, $t)> for MaskedValue {
-                fn from(pair: ($t, $t)) -> Self {
-                    MaskedValue {
-                        value: Integer::from(pair.0),
-                        mask: Integer::from(pair.1),
-                    }
-                }
-            }
-        )*
-    };
+impl<P: PredicateInner, A: CodedAction> Display for Rule<P, A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Rule {{  priority: {}, action: {}, predicate: {} }}", self.priority, self.action, self.predicate)
+    }
 }
 
-impl_masked_value_from!(u8, u16, u32, u64, u128);
-
 pub mod macros {
-    use crate::core::r#match::Match;
+    use crate::r#match::Match;
 
     const INET4_FAMILY_V4_LEN: u128 = 32;
     const INET4_FAMILY_V4_MASK: u128 = (1 << INET4_FAMILY_V4_LEN) - 1;
@@ -475,8 +513,7 @@ pub mod macros {
 
     /// Create a FieldMatch with an IPv4 value.
     /// ```no_run
-    /// use fast_imt::fm_ipv4_from;
-    /// use fast_imt::core::r#match::{FieldMatch, Match, ipv4_to_match};
+    /// use rapimt_core::{fm_ipv4_from, ipv4_to_match, r#match::{FieldMatch, Match}};
     /// let _ = fm_ipv4_from!("dip", "192.168.1.0/24");
     /// let _ = fm_ipv4_from!("dip", "3232235776/32");
     /// let _ = fm_ipv4_from!("dip", "0/0");
@@ -490,13 +527,10 @@ pub mod macros {
             }
         };
     }
-    #[allow(unused_imports)]
-    pub(crate) use fm_ipv4_from;
 
     /// Create a FieldMatch with an exact value.
     /// ```no_run
-    /// use fast_imt::fm_exact_from;
-    /// use fast_imt::core::r#match::{FieldMatch, Match, ipv4_to_match};
+    /// use rapimt_core::{fm_exact_from, r#match::{FieldMatch, Match}};
     /// let _ = fm_exact_from!("dport", 80);
     /// ```
     #[macro_export]
@@ -508,13 +542,10 @@ pub mod macros {
             }
         };
     }
-    #[allow(unused_imports)]
-    pub(crate) use fm_exact_from;
 
     /// Create a FieldMatch with a range value, both inclusive.
     /// ```no_run
-    /// use fast_imt::fm_range_from;
-    /// use fast_imt::core::r#match::{FieldMatch, Match, ipv4_to_match};
+    /// use rapimt_core::{fm_range_from, r#match::{FieldMatch, Match}};
     /// let _ = fm_range_from!("sport", 80, 100);
     /// ```
     #[macro_export]
@@ -529,6 +560,4 @@ pub mod macros {
             }
         };
     }
-    #[allow(unused_imports)]
-    pub(crate) use fm_range_from;
 }

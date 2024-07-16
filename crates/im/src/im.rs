@@ -1,37 +1,31 @@
-use std::cmp::max;
-use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::ops::ShlAssign;
+use std::{cmp::max, collections::HashMap, marker::PhantomData, ops::ShlAssign};
 
-use crate::core::action::CodedActions;
-use crate::core::r#match::{Predicate, PredicateInner, Rule};
-use crate::io::CodedAction;
-
-pub mod monitor;
-
-pub trait FibMonitor<P: PredicateInner, A: CodedAction> {
-    fn clear(&mut self);
-    fn update<As: CodedActions<A>>(
-        &mut self,
-        insertion: Vec<Rule<P, A>>,
-        deletion: Vec<Rule<P, A>>,
-    ) -> InverseModel<P, A, As>;
-    fn insert<As: CodedActions<A>>(
-        &mut self,
-        insertion: Vec<Rule<P, A>>,
-    ) -> InverseModel<P, A, As> {
-        self.update(insertion, vec![])
-    }
-    fn delete<As: CodedActions<A>>(&mut self, deletion: Vec<Rule<P, A>>) -> InverseModel<P, A, As> {
-        self.update(vec![], deletion)
-    }
-}
+use rapimt_core::{
+    action::{CodedAction, CodedActions},
+    r#match::Predicate,
+    r#match::PredicateInner,
+};
 
 #[derive(Debug)]
 pub struct ModelEntry<P: PredicateInner, A: CodedAction, As: CodedActions<A>> {
     pub actions: As,
     pub predicate: Predicate<P>,
-    _phantom: PhantomData<A>,
+    pub _phantom: PhantomData<A>,
+}
+
+impl<P, As, A> From<(As, Predicate<P>)> for ModelEntry<P, A, As>
+where
+    P: PredicateInner,
+    A: CodedAction,
+    As: CodedActions<A>,
+{
+    fn from(tuple: (As, Predicate<P>)) -> Self {
+        ModelEntry {
+            actions: tuple.0,
+            predicate: tuple.1,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 #[derive(Debug)]

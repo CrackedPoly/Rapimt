@@ -1,16 +1,18 @@
-use std::cmp::Reverse;
-use std::collections::{BTreeSet, HashMap};
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{cmp::Reverse, collections::HashMap, collections::HashSet, rc::Rc};
 
-use crate::core::action::CodedActions;
-use crate::core::im::{FibMonitor, InverseModel, ModelEntry};
-use crate::core::r#match::Rule;
-use crate::core::r#match::{MaskedValue, MatchEncoder, Predicate, PredicateInner};
-use crate::io::{ActionEncoder, CodedAction, UncodedAction};
+use rapimt_core::{
+    action::{ActionEncoder, CodedAction, CodedActions, UncodedAction},
+    r#match::{MaskedValue, MatchEncoder, Predicate, PredicateInner, Rule},
+    MAX_POS,
+};
+use rapimt_tpt::{Segmentizer, TernaryPatriciaTree};
+
+use crate::{
+    im::{InverseModel, ModelEntry},
+    FibMonitor,
+};
 
 #[allow(dead_code)]
-#[derive(Debug)]
 pub struct DefaultFibMonitor<'a, 'p, P, ME, A, AE>
 where
     P: PredicateInner,
@@ -21,9 +23,9 @@ where
     engine: &'p ME,
     codex: &'a AE,
     local_ap: HashMap<A, Predicate<P>>,
-    rules: BTreeSet<Rc<Rule<P, A>>>,
+    tpt: TernaryPatriciaTree<Rc<Rule<P, A>>>,
     i_rules: Vec<Rc<Rule<P, A>>>,
-    d_rules: Vec<Rule<P, A>>,
+    d_rules: Vec<Rc<Rule<P, A>>>,
     dim_hint: usize,
 }
 
@@ -35,7 +37,7 @@ where
     AE: ActionEncoder<'a, A>,
 {
     fn clear(&mut self) {
-        self.rules.clear();
+        self.tpt.clear();
         self.i_rules.clear();
         self.d_rules.clear();
     }
@@ -45,22 +47,15 @@ where
         insertion: Vec<Rule<P, A>>,
         deletion: Vec<Rule<P, A>>,
     ) -> InverseModel<P, A, As> {
-        self.i_rules.iter().for_each(|r| {
-            self.rules.insert(r.clone());
-        });
         insertion.into_iter().for_each(|r| {
             let r = Rc::new(r);
-            if self.rules.insert(r.clone()) {
-                self.i_rules.push(r.clone());
-            } else {
-                dbg!(&r);
-                dbg!(&self.rules);
-            }
+            self.insert_tpt(r.clone());
+            self.i_rules.push(r.clone());
         });
         deletion.into_iter().for_each(|r| {
-            if self.rules.remove(&r) {
-                self.d_rules.push(r);
-            }
+            let r = Rc::new(r);
+            self.delete_tpt(r.clone());
+            self.d_rules.push(r.clone());
         });
         self.refresh();
         self.current()
@@ -75,15 +70,45 @@ where
     A: CodedAction,
     AE: ActionEncoder<'a, A, UA = UA>,
 {
+    fn insert_tpt(&mut self, rule: Rc<Rule<P, A>>) {
+        rule.as_ref().origin.iter().for_each(|mv| {
+            self.tpt
+                .insert(rule.clone(), Segmentizer::from(*mv));
+        });
+    }
+
+    fn delete_tpt(&mut self, rule: Rc<Rule<P, A>>) {
+        rule.as_ref().origin.iter().for_each(|mv| {
+            self.tpt
+                .delete(rule.clone(), Segmentizer::from(*mv));
+        });
+    }
+
+    fn search_tpt(&self, rule: Rc<Rule<P, A>>) -> HashSet<Rc<Rule<P, A>>> {
+        rule.as_ref()
+            .origin
+            .iter()
+            .fold(HashSet::new(), |mut set, mv| {
+                set.extend(
+                    self.tpt
+                        .search(rule.clone(), Segmentizer::from(*mv)),
+                );
+                set
+            })
+    }
+
     pub fn new(engine: &'p ME, codex: &'a AE, dim_hint: usize) -> Self {
-        let drop_rule = Rule {
+        // this is the default rule of every forwarding device
+        let drop_rule = Rc::new(Rule {
             priority: -1,
             action: codex.encode(codex.lookup("self")),
             predicate: engine.one(),
-            origin: vec![MaskedValue::from((0u32, 0u32))],
-        };
-        let mut rules = BTreeSet::new();
-        rules.insert(Rc::new(drop_rule));
+            origin: vec![MaskedValue::from((0u128, 0u128))],
+        });
+        let mut tpt = TernaryPatriciaTree::new(MAX_POS);
+        drop_rule.as_ref().origin.iter().for_each(|mv| {
+            tpt.insert(drop_rule.clone(), Segmentizer::from(*mv));
+        });
         let i_rules = Vec::new();
         let d_rules = Vec::new();
         let local_ap = HashMap::new();
@@ -91,7 +116,7 @@ where
             engine,
             codex,
             local_ap,
-            rules,
+            tpt,
             i_rules,
             d_rules,
             dim_hint,
@@ -103,8 +128,11 @@ where
         self.d_rules.sort_by_key(|r| Reverse(r.priority));
         self.local_ap.clear();
         let mut no_overwrite = self.engine.one();
-        self.i_rules.iter().for_each(|r| {
-            let higher = self.rules.iter().filter(|y| y.priority > r.priority);
+        self.i_rules.clone().iter().for_each(|r| {
+            let higher = self
+                .search_tpt(r.clone())
+                .into_iter()
+                .filter(|y| y.priority > r.priority);
             let mut eff = r.predicate.clone();
             for y in higher {
                 eff -= &y.predicate;
@@ -120,9 +148,11 @@ where
                 no_overwrite -= &eff;
             }
         });
-        self.d_rules.iter().for_each(|r| {
-            let (higher, lower_eq): (Vec<_>, Vec<_>) =
-                self.rules.iter().partition(|y| y.priority > r.priority);
+        self.d_rules.clone().iter().for_each(|r| {
+            let (higher, lower_eq): (Vec<_>, Vec<_>) = self
+                .search_tpt(r.clone())
+                .into_iter()
+                .partition(|y| y.priority > r.priority);
             let mut to_divide = r.predicate.clone();
             for y in &higher {
                 to_divide -= &y.predicate;
@@ -165,11 +195,7 @@ where
                 } else {
                     As::from(vec![*a])
                 };
-                ModelEntry {
-                    actions,
-                    predicate: p.clone(),
-                    _phantom: PhantomData,
-                }
+                ModelEntry::from((actions, p.clone()))
             })
             .collect::<Vec<_>>()
             .into()
@@ -177,14 +203,15 @@ where
 }
 
 #[cfg(test)]
-mod test {
-    use crate::core::action::seq_action::SeqActions;
-    use crate::core::im::monitor::DefaultFibMonitor;
-    use crate::core::im::FibMonitor;
-    use crate::core::r#match::family::MatchFamily;
-    use crate::core::r#match::RuddyPredicateEngine;
-    use crate::io::default::DefaultInstLoader;
-    use crate::io::{FibLoader, InstanceLoader};
+mod tests {
+    use rapimt_core::{
+        action::seq_action::SeqActions,
+        r#match::{engine::RuddyPredicateEngine, family::MatchFamily},
+    };
+    use rapimt_io::{DefaultInstLoader, FibLoader, InstanceLoader};
+
+    use crate::monitor::DefaultFibMonitor;
+    use crate::FibMonitor;
 
     #[test]
     fn test_default_fib_monitor() {
@@ -198,7 +225,7 @@ mod test {
         let fib = r#"
         name dev0
         fw 192.168.1.0 24 24 gi0
-        fw 0.0.0.0 0 0 ge0
+        fw 0.0.0.0 1 1 ge0
         "#;
         // load port information
         let parser = DefaultInstLoader::default();
@@ -213,12 +240,9 @@ mod test {
         // setup fib monitor
         let mut fib_monitor = DefaultFibMonitor::new(&engine, &codex, 0);
 
-        // default "drop" ("self") rule as incremental update
-        let im = fib_monitor.update::<SeqActions<u32>>(vec![], vec![]);
-        assert_eq!(im.size, 1);
-        // two rules as an incremental update, one is no overwrite, another is overwriting 192.168.1.0/24
+        // two rules as an incremental update
+        // im should have three entries: one default "drop", one 0.0.0.0/1 and one "192.168.1.0/24"
         let im = fib_monitor.insert::<SeqActions<u32>>(fibs);
-        assert_eq!(im.size, 2);
-        assert_eq!(fib_monitor.rules.len(), 3);
+        assert_eq!(im.size, 3);
     }
 }

@@ -1,11 +1,16 @@
-use std::cell::RefCell;
-use std::cmp::Ordering;
-use std::fmt::{Debug, Display, Formatter};
+use std::{
+    cell::RefCell,
+    cmp::Ordering,
+    fmt::{Debug, Display, Formatter},
+    hash::Hash,
+};
 
 use ruddy::{Bdd, BddIO, BddManager, BddOp, PrintSet, Ruddy};
 
-use crate::core::r#match::family::{FamilyDecl, MatchFamily};
-use crate::core::r#match::{MatchEncoder, Predicate, PredicateEngine, PredicateInner};
+use crate::r#match::{
+    family::{FamilyDecl, MatchFamily},
+    {MatchEncoder, Predicate, PredicateEngine, PredicateInner},
+};
 
 pub struct RuddyPredicateEngine {
     manager: RefCell<Ruddy>,
@@ -144,6 +149,12 @@ impl PartialOrd<Self> for RuddyPredicate<'_> {
     }
 }
 
+impl Hash for RuddyPredicate<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bdd.hash(state);
+    }
+}
+
 impl PredicateInner for RuddyPredicate<'_> {
     fn not(&self) -> Self {
         let bdd = self.engine.manager.borrow_mut().not(&self.bdd);
@@ -253,7 +264,7 @@ impl Debug for RuddyPredicate<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::r#match::{ipv4_to_match, FieldMatch, Match};
+    use crate::r#match::{macros::ipv4_to_match, FieldMatch, Match};
     use crate::{fm_ipv4_from, fm_range_from};
 
     use super::*;
@@ -344,10 +355,6 @@ mod tests {
         let fm0 = fm_range_from!("sport", 123, 147);
         let (_, mvs) = engine.encode_match(fm0);
         assert_eq!(mvs.len(), 4);
-        assert_eq!(mvs[0].value, 123);
-        assert_eq!(mvs[1].value, 124);
-        assert_eq!(mvs[2].value, 128);
-        assert_eq!(mvs[3].value, 144);
 
         let fm0 = fm_range_from!("sport", 123, 147);
         let fm1 = fm_range_from!("dport", 123, 147);

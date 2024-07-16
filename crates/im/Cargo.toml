@@ -1,0 +1,16 @@
+[package]
+name = "rapimt-im"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rapimt-core = { path = "../core" }
+rapimt-io = { path = "../io" }
+rapimt-tpt = { path = "../tpt" }
+
+[[example]]
+name = "stanford"
+path = "examples/stanford/stanford.rs"
+

@@ -1,21 +1,26 @@
 use std::cell::RefCell;
 
 use indexmap::map::IndexMap;
-use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::character::complete::{multispace0, multispace1};
-use nom::combinator::{all_consuming, map, not};
-use nom::error::ErrorKind;
-use nom::error::ParseError;
-use nom::multi::{separated_list0, separated_list1};
-use nom::sequence::{delimited, pair, preceded, separated_pair, tuple};
-use nom::IResult;
+use nom::{
+    branch::alt,
+    bytes::complete::tag,
+    character::complete::{multispace0, multispace1},
+    combinator::{all_consuming, map, not},
+    error::{ErrorKind, ParseError},
+    multi::{separated_list0, separated_list1},
+    sequence::{delimited, pair, preceded, separated_pair, tuple},
+    IResult,
+};
 
-use crate::core::r#match::Rule;
-use crate::core::r#match::{FieldMatch, Match, PredicateEngine, PredicateInner};
-use crate::io::basic::action::ActionType;
-use crate::io::basic::parser::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num};
-use crate::io::{ActionEncoder, FibLoader, InstanceLoader, UncodedAction};
+use rapimt_core::{
+    action::{ActionEncoder, ActionType, UncodedAction},
+    r#match::{FieldMatch, Match, PredicateEngine, PredicateInner, Rule},
+};
+
+use crate::{
+    basic::parser::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num},
+    {FibLoader, InstanceLoader},
+};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -291,8 +296,7 @@ where
 mod tests {
     use std::borrow::Borrow;
 
-    use crate::core::r#match::family::MatchFamily::Inet4Family;
-    use crate::core::r#match::RuddyPredicateEngine;
+    use rapimt_core::r#match::{engine::RuddyPredicateEngine, family::MatchFamily::Inet4Family};
 
     use super::*;
 

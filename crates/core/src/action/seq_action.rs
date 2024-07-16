@@ -1,8 +1,9 @@
-use std::hash::Hash;
-use std::ops::{Index, IndexMut};
+use std::{
+    hash::Hash,
+    ops::{Index, IndexMut},
+};
 
-use crate::core::action::CodedActions;
-use crate::io::CodedAction;
+use crate::action::{CodedAction, CodedActions};
 
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct SeqActions<A: CodedAction>(Vec<A>);

@@ -12,14 +12,16 @@
 //!
 //! ## Example
 //! ```no_run
-//! use fast_imt::core::r#match::{Match, FieldMatch, ipv4_to_match};
-//! use fast_imt::core::r#match::family::MatchFamily;
-//! use crate::fast_imt::fm_ipv4_from;
+//! use rapimt_core::{
+//!     fm_ipv4_from, ipv4_to_match,
+//!     r#match::{Match, FieldMatch, family::MatchFamily},
+//! };
 //!
 //! let fm = fm_ipv4_from!("dip", "192.168.1.0/24");
 //! // fm.cond is parsed into a Match::TernaryMatch
 //! assert!(matches!(fm.cond, Match::TernaryMatch { .. }));
 //! ```
+use bitvec::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct FieldDeclaration {
@@ -32,6 +34,22 @@ pub trait FamilyDecl {
     fn get_max_pos(&self) -> u128;
     fn get_field_declaration(&self, name: String) -> Option<&FieldDeclaration>;
 }
+
+pub type Inet4BitStore = u32;
+pub const INET4STORENUM: usize = 1;
+pub const INET4MAXPOS: usize = 32;
+
+pub type TcpT4BitStore = u32;
+pub const TCPT4STORENUM: usize = 3;
+pub const TCPT4MAXPOS: usize = 96;
+
+pub type HeaderBitOrder = Msb0;
+// #[cfg(target_header="inet4")]
+pub type HeaderBitStore = Inet4BitStore;
+// #[cfg(target_header="inet4")]
+pub const HEADERSTORENUM: usize = INET4STORENUM;
+// #[cfg(target_header="inet4")]
+pub const MAX_POS: usize = INET4MAXPOS;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -68,6 +86,8 @@ impl MatchFamily {
         from: 0,
         to: 31,
     }];
+    const INET4_MAX_POS: u128 = 32;
+
     const TCP_FIELDS: [FieldDeclaration; 4] = [
         FieldDeclaration {
             name: "sport",
@@ -90,6 +110,7 @@ impl MatchFamily {
             to: 95,
         },
     ];
+    const TCPT4_MAX_POS: u128 = 96;
 
     fn get_fields(&self) -> &'static [FieldDeclaration] {
         match self {
@@ -101,10 +122,10 @@ impl MatchFamily {
 
 impl FamilyDecl for MatchFamily {
     fn get_max_pos(&self) -> u128 {
-        (match self {
-            MatchFamily::Inet4Family => MatchFamily::INET4_FIELDS.last().unwrap().to + 1,
-            MatchFamily::TcpT4Family => MatchFamily::TCP_FIELDS.last().unwrap().to + 1,
-        }) as u128
+        match self {
+            MatchFamily::Inet4Family => MatchFamily::INET4_MAX_POS,
+            MatchFamily::TcpT4Family => MatchFamily::TCPT4_MAX_POS,
+        }
     }
 
     fn get_field_declaration(&self, name: String) -> Option<&FieldDeclaration> {
