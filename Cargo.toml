@@ -15,4 +15,7 @@ members = ["crates/*"]
 [[bin]]
 doc = false
 name = "rimt"
-path = "crates/cli/src/bin/rimt.rs"
+path = "crates/rapimt_cli/src/bin/rimt.rs"
+
+[dependencies]
+rapimt_internal = { path = "crates/rapimt_internal" }

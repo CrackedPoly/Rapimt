@@ -1,0 +1,12 @@
+[package]
+name = "rapimt_internal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rapimt_core = { path = "../rapimt_core" }
+rapimt_im = { path = "../rapimt_im" }
+rapimt_io = { path = "../rapimt_io" }
+rapimt_tpt = { path = "../rapimt_tpt" }
+rapimt_ver = { path = "../rapimt_ver" }
+
