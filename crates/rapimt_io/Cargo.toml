@@ -9,3 +9,4 @@ edition = "2021"
 rapimt_core = { path = "../rapimt_core" }
 nom = "7"
 indexmap = "2.2.5"
+fxhash = "0.2.1"

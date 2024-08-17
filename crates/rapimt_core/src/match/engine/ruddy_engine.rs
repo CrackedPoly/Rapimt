@@ -31,7 +31,11 @@ impl RuddyPredicateEngine {
     /// For recommendation, call ```init(1000, 100, family)``` to start with.
     pub fn init(node_num: usize, cache_size: usize, family: MatchFamily) -> Self {
         let mut engine = Self {
-            manager: RefCell::new(Ruddy::init(node_num as u32, cache_size as u32, family.get_max_pos() as u32)),
+            manager: RefCell::new(Ruddy::init(
+                node_num as u32,
+                cache_size as u32,
+                family.get_max_pos() as u32,
+            )),
             var_pair: Vec::new(),
             family: MatchFamily::Inet4Family,
         };

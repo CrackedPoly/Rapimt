@@ -14,10 +14,11 @@ pub mod prelude {
     pub use crate::{
         action::{seq_action, ActionEncoder, ActionType, CodedAction, CodedActions, UncodedAction},
         r#match::{
-            engine::{RuddyPredicateEngine, RuddyPredicate},
+            engine::{RuddyPredicate, RuddyPredicateEngine},
             family::{HeaderBitOrder, HeaderBitStore, MatchFamily, HEADERSTORENUM, MAX_POS},
             macros::ipv4_to_match,
-            FieldMatch, MaskedValue, Match, MatchEncoder, Predicate, PredicateEngine, Rule, UncodedRule, PredicateInner,
+            FieldMatch, MaskedValue, Match, MatchEncoder, Predicate, PredicateEngine,
+            PredicateInner, Rule, UncodedRule,
         },
     };
 }

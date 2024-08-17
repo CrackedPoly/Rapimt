@@ -14,5 +14,5 @@ pub use crate::patricia::GraphvizDebug;
 #[allow(missing_docs)]
 pub mod prelude {
     #[doc(hidden)]
-    pub use crate::{Segmentized, Segmentizer, patricia::TernaryPatriciaTree};
+    pub use crate::{patricia::TernaryPatriciaTree, Segmentized, Segmentizer};
 }

@@ -1,5 +1,6 @@
 use std::{cmp::max, collections::HashMap, marker::PhantomData, ops::ShlAssign};
 
+use fxhash::FxBuildHasher;
 use rapimt_core::{
     action::{CodedAction, CodedActions},
     r#match::Predicate,
@@ -74,11 +75,14 @@ where
     fn shl_assign(&mut self, rhs: Self) {
         if self.size == 0 {
             *self = rhs;
-            return; } else if rhs.size == 0 { return;
+            return;
+        } else if rhs.size == 0 {
+            return;
         }
         assert_eq!(self.n_dim, rhs.n_dim);
         let capacity = max(self.size, rhs.size);
-        let mut result: HashMap<As, Predicate<P>> = HashMap::with_capacity(capacity);
+        let mut result: HashMap<As, Predicate<P>, FxBuildHasher> =
+            HashMap::with_capacity_and_hasher(capacity, FxBuildHasher::default());
         self.data.iter().for_each(|ex| {
             let mut px = ex.predicate.clone();
             rhs.data.iter().for_each(|ey| {

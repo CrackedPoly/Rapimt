@@ -9,23 +9,22 @@ where
     fn header_space(&self) -> Predicate<P>;
 }
 
-
 pub enum Requirement<P>
-where 
-    P: PredicateInner 
+where
+    P: PredicateInner,
 {
     Reachability(Reachability<P>),
     MinHopCount(MinHopCount<P>),
 }
 
 impl<P> Invariant<P> for Requirement<P>
-where 
-    P: PredicateInner 
+where
+    P: PredicateInner,
 {
     fn name(&self) -> &str {
         match self {
             Requirement::Reachability(r) => r.name.as_str(),
-            Requirement::MinHopCount(m) => m.name.as_str()
+            Requirement::MinHopCount(m) => m.name.as_str(),
         }
     }
     fn header_space(&self) -> Predicate<P> {
@@ -36,17 +35,17 @@ where
     }
 }
 
-pub struct Reachability<P> 
-where 
-    P: PredicateInner 
+pub struct Reachability<P>
+where
+    P: PredicateInner,
 {
     pub name: String,
     pub header_space: Predicate<P>,
 }
 
 pub struct MinHopCount<P>
-where 
-    P: PredicateInner 
+where
+    P: PredicateInner,
 {
     pub name: String,
     pub header_space: Predicate<P>,

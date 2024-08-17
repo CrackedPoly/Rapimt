@@ -1,5 +1,6 @@
-use std::cell::RefCell;
+use std::{borrow::Borrow, cell::RefCell};
 
+use fxhash::FxBuildHasher;
 use indexmap::map::IndexMap;
 use nom::{
     branch::alt,
@@ -41,9 +42,9 @@ struct PortInfo {
 pub struct PortInfoBase {
     dev: String,
     // port name -> neighbor info
-    nbrs: IndexMap<String, NeighborInfo>,
+    nbrs: IndexMap<String, NeighborInfo, FxBuildHasher>,
     // port name -> port info
-    ports: RefCell<IndexMap<String, PortInfo>>,
+    ports: RefCell<IndexMap<String, PortInfo, FxBuildHasher>>,
 }
 
 pub struct TypedAction<'a> {
@@ -71,7 +72,7 @@ impl<'o> UncodedAction for TypedAction<'o> {
             .1
             .p_ports
             .iter()
-            .map(|s| self.origin.nbrs.get(s).unwrap().name.as_str())
+            .map(|s| self.origin.nbrs.borrow().get(s).unwrap().name.as_str())
             .collect()
     }
 }
@@ -129,8 +130,8 @@ pub struct DefaultInstLoader {}
 
 impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultInstLoader {
     fn _load<'x, E: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), PortInfoBase, E> {
-        let nbrs = RefCell::new(IndexMap::new());
-        let ports = RefCell::new(IndexMap::new());
+        let nbrs = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
+        let ports = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
         ports.borrow_mut().insert(
             "self".to_owned(),
             PortInfo {
@@ -312,13 +313,14 @@ mod tests {
         "#;
         let base = loader.load(spec).unwrap();
         assert_eq!(base.dev, "dev0");
-        assert_eq!(base.nbrs.len(), 2);
+        assert_eq!(base.nbrs.borrow().len(), 2);
         assert_eq!(base.ports.borrow().len(), 5);
 
-        let n1 = base.nbrs.get("ge0").unwrap();
+        let binding = base.nbrs.borrow();
+        let n1 = binding.get("ge0").unwrap();
         assert_eq!(n1.name, "dev1");
         assert!(!n1.external);
-        let n2 = base.nbrs.get("ge1").unwrap();
+        let n2 = binding.get("ge1").unwrap();
         assert_eq!(n2.name, "dev2");
         assert!(!n2.external);
 

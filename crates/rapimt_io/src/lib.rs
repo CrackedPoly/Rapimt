@@ -207,5 +207,5 @@ pub mod basic {
 #[allow(missing_docs)]
 pub mod prelude {
     #[doc(hidden)]
-    pub use crate::{DefaultInstLoader, PortInfoBase, TypedAction};
+    pub use crate::{DefaultInstLoader, FibLoader, InstanceLoader, PortInfoBase, TypedAction};
 }

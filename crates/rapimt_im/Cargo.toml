@@ -9,6 +9,7 @@ edition = "2021"
 rapimt_core = { path = "../rapimt_core" }
 rapimt_io = { path = "../rapimt_io" }
 rapimt_tpt = { path = "../rapimt_tpt" }
+fxhash = "0.2.1"
 
 [[example]]
 name = "stanford"

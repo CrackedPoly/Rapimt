@@ -1,5 +1,6 @@
 use std::{cmp::Reverse, collections::HashMap, collections::HashSet, rc::Rc};
 
+use fxhash::FxBuildHasher;
 use rapimt_core::{
     action::{ActionEncoder, CodedAction, CodedActions, UncodedAction},
     r#match::{MaskedValue, MatchEncoder, Predicate, PredicateInner, Rule},
@@ -22,7 +23,7 @@ where
 {
     engine: &'p ME,
     codex: &'a AE,
-    local_ap: HashMap<A, Predicate<P>>,
+    local_ap: HashMap<A, Predicate<P>, FxBuildHasher>,
     tpt: TernaryPatriciaTree<Rc<Rule<P, A>>>,
     i_rules: Vec<Rc<Rule<P, A>>>,
     d_rules: Vec<Rc<Rule<P, A>>>,
@@ -106,7 +107,7 @@ where
         });
         let i_rules = Vec::new();
         let d_rules = Vec::new();
-        let local_ap = HashMap::new();
+        let local_ap = HashMap::with_hasher(FxBuildHasher::default());
         DefaultFibMonitor {
             engine,
             codex,
@@ -223,8 +224,8 @@ mod tests {
         fw 0.0.0.0 1 1 ge0
         "#;
         // load port information
-        let parser = DefaultInstLoader::default();
-        let codex = InstanceLoader::load(&parser, spec).unwrap();
+        let loader = DefaultInstLoader::default();
+        let codex = InstanceLoader::load(&loader, spec).unwrap();
 
         // load fibs
         let family = MatchFamily::Inet4Family;
