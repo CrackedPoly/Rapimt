@@ -58,10 +58,12 @@ impl RuddyPredicateEngine {
 impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
     type P = RuddyPredicate<'a>;
 
+    #[inline]
     fn gc(&self) -> Option<usize> {
         self.manager.borrow_mut().gc()
     }
 
+    #[inline]
     fn one(&'a self) -> Predicate<Self::P> {
         Predicate::new(RuddyPredicate {
             bdd: self.var_pair[0].0,
@@ -69,6 +71,7 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
         })
     }
 
+    #[inline]
     fn zero(&'a self) -> Predicate<Self::P> {
         Predicate::new(RuddyPredicate {
             bdd: self.var_pair[0].1,
@@ -76,6 +79,7 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
         })
     }
 
+    #[inline]
     fn family(&self) -> &MatchFamily {
         &self.family
     }
@@ -126,6 +130,7 @@ pub struct RuddyPredicate<'a> {
 }
 
 impl PartialEq<Self> for RuddyPredicate<'_> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.bdd == other.bdd
     }
@@ -134,24 +139,28 @@ impl PartialEq<Self> for RuddyPredicate<'_> {
 impl Eq for RuddyPredicate<'_> {}
 
 impl Ord for RuddyPredicate<'_> {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.bdd.cmp(&other.bdd)
     }
 }
 
 impl PartialOrd<Self> for RuddyPredicate<'_> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Hash for RuddyPredicate<'_> {
+    #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.bdd.hash(state);
     }
 }
 
 impl PredicateInner for RuddyPredicate<'_> {
+    #[inline]
     fn not(&self) -> Self {
         let bdd = self.engine.manager.borrow_mut().not(&self.bdd);
         RuddyPredicate {
@@ -160,6 +169,7 @@ impl PredicateInner for RuddyPredicate<'_> {
         }
     }
 
+    #[inline]
     fn and(&self, rhs: &Self) -> Self {
         let bdd = self.engine.manager.borrow_mut().and(&self.bdd, &rhs.bdd);
         RuddyPredicate {
@@ -168,6 +178,7 @@ impl PredicateInner for RuddyPredicate<'_> {
         }
     }
 
+    #[inline]
     fn or(&self, rhs: &Self) -> Self {
         let bdd = self.engine.manager.borrow_mut().or(&self.bdd, &rhs.bdd);
         RuddyPredicate {
@@ -176,6 +187,7 @@ impl PredicateInner for RuddyPredicate<'_> {
         }
     }
 
+    #[inline]
     fn comp(&self, rhs: &Self) -> Self {
         let bdd = self.engine.manager.borrow_mut().comp(&self.bdd, &rhs.bdd);
         RuddyPredicate {
@@ -184,15 +196,18 @@ impl PredicateInner for RuddyPredicate<'_> {
         }
     }
 
+    #[inline]
     fn is_empty(&self) -> bool {
         self.bdd == self.engine.manager.borrow().get_false()
     }
 
+    #[inline]
     fn _ref(self) -> Self {
         self.engine.manager.borrow_mut().ref_bdd(&self.bdd);
         self
     }
 
+    #[inline]
     fn _deref(&self) {
         self.engine.manager.borrow_mut().deref_bdd(&self.bdd);
     }

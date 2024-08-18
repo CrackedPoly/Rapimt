@@ -84,6 +84,7 @@ impl Debug for MaskedValue {
 
 impl BitOr for MaskedValue {
     type Output = MaskedValue;
+    #[inline]
     fn bitor(self, rhs: Self) -> Self::Output {
         MaskedValue {
             // #[cfg(target_header="inet4")]
@@ -96,6 +97,7 @@ impl BitOr for MaskedValue {
 
 // #[cfg(target_stack="inet4")]
 impl From<(u128, u128)> for MaskedValue {
+    #[inline]
     fn from(pair: (u128, u128)) -> Self {
         MaskedValue {
             // #[cfg(target_stack="inet4")]
@@ -108,6 +110,7 @@ impl From<(u128, u128)> for MaskedValue {
 
 // #[cfg(target_stack="inet4")]
 impl From<(u64, u64)> for MaskedValue {
+    #[inline]
     fn from(pair: (u64, u64)) -> Self {
         MaskedValue {
             // #[cfg(target_stack="inet4")]
@@ -298,22 +301,26 @@ pub trait PredicateInner:
 pub struct Predicate<P: PredicateInner>(P);
 
 impl<P: PredicateInner> Predicate<P> {
+    #[inline]
     fn new(p: P) -> Self {
         Predicate(p._ref())
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
 
 impl<P: PredicateInner> Clone for Predicate<P> {
+    #[inline]
     fn clone(&self) -> Self {
         Predicate::new(self.0)
     }
 }
 
 impl<P: PredicateInner> Drop for Predicate<P> {
+    #[inline]
     fn drop(&mut self) {
         self.0._deref();
     }
@@ -328,6 +335,7 @@ impl<P: PredicateInner> Display for Predicate<P> {
 impl<P: PredicateInner> Not for Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn not(self) -> Self::Output {
         Predicate::new(self.0.not())
     }
@@ -336,6 +344,7 @@ impl<P: PredicateInner> Not for Predicate<P> {
 impl<P: PredicateInner> Not for &'_ Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn not(self) -> Self::Output {
         Predicate::new(self.0.not())
     }
@@ -344,6 +353,7 @@ impl<P: PredicateInner> Not for &'_ Predicate<P> {
 impl<P: PredicateInner> BitAnd for Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn bitand(self, rhs: Self) -> Self::Output {
         Predicate::new(self.0.and(&rhs.0))
     }
@@ -352,6 +362,7 @@ impl<P: PredicateInner> BitAnd for Predicate<P> {
 impl<P: PredicateInner> BitAnd<&Self> for Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn bitand(self, rhs: &Self) -> Self::Output {
         Predicate::new(self.0.and(&rhs.0))
     }
@@ -360,12 +371,14 @@ impl<P: PredicateInner> BitAnd<&Self> for Predicate<P> {
 impl<P: PredicateInner> BitAnd for &'_ Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn bitand(self, rhs: Self) -> Self::Output {
         Predicate::new(self.0.and(&rhs.0))
     }
 }
 
 impl<P: PredicateInner> BitAndAssign for Predicate<P> {
+    #[inline]
     fn bitand_assign(&mut self, rhs: Self) {
         let prev = self.0;
         self.0 = self.0.and(&rhs.0)._ref();
@@ -374,6 +387,7 @@ impl<P: PredicateInner> BitAndAssign for Predicate<P> {
 }
 
 impl<P: PredicateInner> BitAndAssign<&Self> for Predicate<P> {
+    #[inline]
     fn bitand_assign(&mut self, rhs: &Self) {
         let prev = self.0;
         self.0 = self.0.and(&rhs.0)._ref();
@@ -384,6 +398,7 @@ impl<P: PredicateInner> BitAndAssign<&Self> for Predicate<P> {
 impl<P: PredicateInner> BitOr for Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn bitor(self, rhs: Self) -> Self::Output {
         Predicate(self.0.or(&rhs.0)._ref())
     }
@@ -392,6 +407,7 @@ impl<P: PredicateInner> BitOr for Predicate<P> {
 impl<P: PredicateInner> BitOr<&Self> for Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn bitor(self, rhs: &Self) -> Self::Output {
         Predicate(self.0.or(&rhs.0)._ref())
     }
@@ -400,12 +416,14 @@ impl<P: PredicateInner> BitOr<&Self> for Predicate<P> {
 impl<P: PredicateInner> BitOr for &'_ Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn bitor(self, rhs: Self) -> Self::Output {
         Predicate(self.0.or(&rhs.0)._ref())
     }
 }
 
 impl<P: PredicateInner> BitOrAssign for Predicate<P> {
+    #[inline]
     fn bitor_assign(&mut self, rhs: Self) {
         let prev = self.0;
         self.0 = self.0.or(&rhs.0)._ref();
@@ -414,6 +432,7 @@ impl<P: PredicateInner> BitOrAssign for Predicate<P> {
 }
 
 impl<P: PredicateInner> BitOrAssign<&Self> for Predicate<P> {
+    #[inline]
     fn bitor_assign(&mut self, rhs: &Self) {
         let prev = self.0;
         self.0 = self.0.or(&rhs.0)._ref();
@@ -424,6 +443,7 @@ impl<P: PredicateInner> BitOrAssign<&Self> for Predicate<P> {
 impl<P: PredicateInner> Sub for Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         Predicate(self.0.comp(&rhs.0)._ref())
     }
@@ -432,6 +452,7 @@ impl<P: PredicateInner> Sub for Predicate<P> {
 impl<P: PredicateInner> Sub<&Self> for Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn sub(self, rhs: &Self) -> Self::Output {
         Predicate(self.0.comp(&rhs.0)._ref())
     }
@@ -440,12 +461,14 @@ impl<P: PredicateInner> Sub<&Self> for Predicate<P> {
 impl<P: PredicateInner> Sub for &'_ Predicate<P> {
     type Output = Predicate<P>;
 
+    #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         Predicate(self.0.comp(&rhs.0)._ref())
     }
 }
 
 impl<P: PredicateInner> SubAssign for Predicate<P> {
+    #[inline]
     fn sub_assign(&mut self, rhs: Self) {
         let prev = self.0;
         self.0 = self.0.comp(&rhs.0)._ref();
@@ -454,6 +477,7 @@ impl<P: PredicateInner> SubAssign for Predicate<P> {
 }
 
 impl<P: PredicateInner> SubAssign<&Self> for Predicate<P> {
+    #[inline]
     fn sub_assign(&mut self, rhs: &Self) {
         let prev = self.0;
         self.0 = self.0.comp(&rhs.0)._ref();
@@ -480,12 +504,14 @@ pub struct UncodedRule<P: PredicateInner> {
 }
 
 impl<P: PredicateInner, A: CodedAction> PartialOrd for Rule<P, A> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl<P: PredicateInner, A: CodedAction> Ord for Rule<P, A> {
+    #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         other
             .priority

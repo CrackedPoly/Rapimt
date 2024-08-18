@@ -38,7 +38,6 @@ type TreeNodeRef<V> = Rc<RefCell<TreeNode<V>>>;
 
 // this is a helper trait for bypassing the external struct constraint
 trait TNode<V> {
-    #[allow(dead_code)]
     fn recursive_dump(&self, depth: usize);
     fn new(
         cond: Segment,

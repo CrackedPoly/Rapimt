@@ -119,7 +119,7 @@ where
     As: CodedActions<A>,
 {
     pub fn resize(&mut self, to: usize, offset: usize) {
-        assert!(to >= offset + self.n_dim);
+        debug_assert!(to >= offset + self.n_dim);
         self.n_dim = to;
         for i in 0..self.size {
             self.data[i].actions.resize(to, offset);

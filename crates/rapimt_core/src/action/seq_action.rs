@@ -9,6 +9,7 @@ use crate::action::{CodedAction, CodedActions};
 pub struct SeqActions<A: CodedAction>(Vec<A>);
 
 impl<A: CodedAction> From<Vec<A>> for SeqActions<A> {
+    #[inline]
     fn from(value: Vec<A>) -> Self {
         SeqActions(value)
     }
@@ -17,18 +18,21 @@ impl<A: CodedAction> From<Vec<A>> for SeqActions<A> {
 impl<A: CodedAction> Index<usize> for SeqActions<A> {
     type Output = A;
 
+    #[inline]
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
 }
 
 impl<A: CodedAction> IndexMut<usize> for SeqActions<A> {
+    #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0[index]
     }
 }
 
 impl<A: CodedAction> CodedActions<A> for SeqActions<A> {
+    #[inline]
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -62,7 +66,7 @@ impl<A: CodedAction> CodedActions<A> for SeqActions<A> {
     }
 
     fn diff(&self, rhs: &Self) -> usize {
-        assert_eq!(self.0.len(), rhs.0.len());
+        debug_assert_eq!(self.0.len(), rhs.0.len());
         let n_dim = self.0.len();
         let mut diff: usize = 0;
         for i in 0..n_dim {

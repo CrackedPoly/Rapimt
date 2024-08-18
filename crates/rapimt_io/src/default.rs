@@ -80,10 +80,12 @@ impl<'o> UncodedAction for TypedAction<'o> {
 impl<'a> ActionEncoder<'a> for PortInfoBase {
     type UA = TypedAction<'a>;
 
+    #[inline]
     fn encode(&'a self, action: Self::UA) -> u32 {
         action.idx
     }
 
+    #[inline]
     fn decode(&'a self, coded_action: u32) -> Self::UA {
         TypedAction {
             idx: coded_action,
@@ -189,7 +191,7 @@ fn parse_mode<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Ac
     }
 }
 
-pub fn parse_port<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
+fn parse_port<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
     if not(alt((tag::<&str, &str, E>("port"), tag("neighbor"))))(input).is_ok() {
         return parse_ident(input);
     }
