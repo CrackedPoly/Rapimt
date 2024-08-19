@@ -47,6 +47,7 @@ pub struct PortInfoBase {
     ports: RefCell<IndexMap<String, PortInfo, FxBuildHasher>>,
 }
 
+#[derive(Clone, Copy)]
 pub struct TypedAction<'a> {
     idx: u32,
     origin: &'a PortInfoBase,
