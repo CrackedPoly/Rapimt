@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, cell::RefCell};
+use std::{borrow::Borrow, cell::RefCell, hash::Hash};
 
 use fxhash::FxBuildHasher;
 use indexmap::map::IndexMap;
@@ -51,6 +51,20 @@ pub struct PortInfoBase {
 pub struct TypedAction<'a> {
     idx: u32,
     origin: &'a PortInfoBase,
+}
+
+impl PartialEq for TypedAction<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.idx == other.idx && std::ptr::eq(self.origin, other.origin)
+    }
+}
+
+impl Eq for TypedAction<'_> {}
+
+impl Hash for TypedAction<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.idx.hash(state);
+    }
 }
 
 impl<'o> UncodedAction for TypedAction<'o> {
