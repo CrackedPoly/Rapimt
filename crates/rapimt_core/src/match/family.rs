@@ -40,19 +40,22 @@ type Inet4BitStore = u32;
 const INET4STORENUM: usize = 1;
 const INET4MAXPOS: usize = 32;
 
+#[allow(dead_code)]
 type TcpT4BitStore = u32;
+#[allow(dead_code)]
 const TCPT4STORENUM: usize = 3;
+#[allow(dead_code)]
 const TCPT4MAXPOS: usize = 96;
 
 /// (compile option) The bit order of header fields.
 pub type HeaderBitOrder = Msb0;
-// #[cfg(target_header="inet4")]
+// #[cfg(target_header="inet4")] // # UNCOMMENT THIS
 pub type HeaderBitStore = Inet4BitStore;
 /// (compile option) Number of header stores.
-// #[cfg(target_header="inet4")]
+// #[cfg(target_header="inet4")] // # UNCOMMENT THIS
 pub const HEADERSTORENUM: usize = INET4STORENUM;
 /// (compile option) Maximum position of header fields of this family.
-// #[cfg(target_header="inet4")]
+// #[cfg(target_header="inet4")] // # UNCOMMENT THIS
 pub const MAX_POS: usize = INET4MAXPOS;
 
 /// Supported header families.
