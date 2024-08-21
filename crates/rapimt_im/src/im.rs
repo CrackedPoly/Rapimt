@@ -2,75 +2,70 @@ use std::{cmp::max, collections::HashMap, marker::PhantomData, ops::ShlAssign};
 
 use fxhash::FxBuildHasher;
 use rapimt_core::{
-    action::{CodedAction, CodedActions},
-    r#match::Predicate,
-    r#match::PredicateInner,
+    action::{Action, CodedActions, ModelType, Multiple, Single},
+    r#match::{Predicate, PredicateInner},
 };
 
 #[derive(Debug)]
-pub struct ModelEntry<P: PredicateInner, A: CodedAction, As: CodedActions<A>> {
-    pub actions: As,
+pub struct ModelEntry<A: Action<T>, P: PredicateInner, T: ModelType> {
+    pub action: A,
     pub predicate: Predicate<P>,
-    pub _phantom: PhantomData<A>,
+    pub _marker: PhantomData<T>,
 }
 
-impl<P, As, A> From<(As, Predicate<P>)> for ModelEntry<P, A, As>
+impl<A, P, T> From<(A, Predicate<P>)> for ModelEntry<A, P, T>
 where
+    A: Action<T>,
     P: PredicateInner,
-    A: CodedAction,
-    As: CodedActions<A>,
+    T: ModelType,
 {
-    fn from(tuple: (As, Predicate<P>)) -> Self {
+    fn from(tuple: (A, Predicate<P>)) -> Self {
         ModelEntry {
-            actions: tuple.0,
+            action: tuple.0,
             predicate: tuple.1,
-            _phantom: PhantomData,
+            _marker: PhantomData,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct InverseModel<P: PredicateInner, A: CodedAction, As: CodedActions<A>> {
-    pub n_dim: usize,
+pub struct InverseModel<A: Action<T>, P: PredicateInner, T: ModelType> {
     pub size: usize,
-    pub data: Vec<ModelEntry<P, A, As>>,
+    pub data: Vec<ModelEntry<A, P, T>>,
 }
 
-impl<P, As, A> From<ModelEntry<P, A, As>> for InverseModel<P, A, As>
+impl<A, P, T> From<ModelEntry<A, P, T>> for InverseModel<A, P, T>
 where
+    A: Action<T>,
     P: PredicateInner,
-    A: CodedAction,
-    As: CodedActions<A>,
+    T: ModelType,
 {
-    fn from(value: ModelEntry<P, A, As>) -> Self {
+    fn from(value: ModelEntry<A, P, T>) -> Self {
         InverseModel {
-            n_dim: value.actions.len(),
             size: 1,
             data: vec![value],
         }
     }
 }
 
-impl<P, As, A> From<Vec<ModelEntry<P, A, As>>> for InverseModel<P, A, As>
+impl<A, P, T> From<Vec<ModelEntry<A, P, T>>> for InverseModel<A, P, T>
 where
+    A: Action<T>,
     P: PredicateInner,
-    A: CodedAction,
-    As: CodedActions<A>,
+    T: ModelType,
 {
-    fn from(value: Vec<ModelEntry<P, A, As>>) -> Self {
+    fn from(value: Vec<ModelEntry<A, P, T>>) -> Self {
         InverseModel {
-            n_dim: value.first().unwrap().actions.len(),
             size: value.len(),
             data: value,
         }
     }
 }
 
-impl<P, A, As> ShlAssign for InverseModel<P, A, As>
+impl<A, P> ShlAssign for InverseModel<A, P, Multiple>
 where
+    A: CodedActions,
     P: PredicateInner,
-    A: CodedAction,
-    As: CodedActions<A>,
 {
     fn shl_assign(&mut self, rhs: Self) {
         if self.size == 0 {
@@ -79,9 +74,8 @@ where
         } else if rhs.size == 0 {
             return;
         }
-        assert_eq!(self.n_dim, rhs.n_dim);
         let capacity = max(self.size, rhs.size);
-        let mut result: HashMap<As, Predicate<P>, FxBuildHasher> =
+        let mut result: HashMap<A, Predicate<P>, FxBuildHasher> =
             HashMap::with_capacity_and_hasher(capacity, FxBuildHasher::default());
         self.data.iter().for_each(|ex| {
             let mut px = ex.predicate.clone();
@@ -89,7 +83,7 @@ where
                 let mut py = ey.predicate.clone();
                 let pxy = &px & &py;
                 if !pxy.is_empty() {
-                    let axy = ex.actions.overwritten(&ey.actions);
+                    let axy = ex.action.overwritten(&ey.action);
                     result
                         .entry(axy)
                         .and_modify(|p0| *p0 |= &pxy)
@@ -103,41 +97,56 @@ where
         self.data.clear();
         result.into_iter().for_each(|(a, p)| {
             self.data.push(ModelEntry {
-                actions: a,
+                action: a,
                 predicate: p,
-                _phantom: PhantomData,
+                _marker: PhantomData,
             });
         });
         self.size = self.data.len();
     }
 }
 
-impl<P, A, As> InverseModel<P, A, As>
+impl<A, P> InverseModel<A, P, Multiple>
 where
+    A: CodedActions,
     P: PredicateInner,
-    A: CodedAction,
-    As: CodedActions<A>,
 {
     pub fn resize(&mut self, to: usize, offset: usize) {
-        debug_assert!(to >= offset + self.n_dim);
-        self.n_dim = to;
         for i in 0..self.size {
-            self.data[i].actions.resize(to, offset);
+            self.data[i].action.resize(to, offset);
         }
     }
 }
 
-impl<P, A, As> Default for InverseModel<P, A, As>
+impl<A, P> From<InverseModel<A::S, P, Single>> for InverseModel<A, P, Multiple>
 where
+    A: CodedActions,
     P: PredicateInner,
-    A: CodedAction,
-    As: CodedActions<A>,
+{
+    fn from(value: InverseModel<A::S, P, Single>) -> Self {
+        let InverseModel { size, data } = value;
+        let data = data
+            .into_iter()
+            .map(|x| ModelEntry {
+                action: A::from(x.action),
+                predicate: x.predicate,
+                _marker: PhantomData,
+            })
+            .collect();
+        Self { size, data }
+    }
+}
+
+impl<A, P, T> Default for InverseModel<A, P, T>
+where
+    A: Action<T>,
+    P: PredicateInner,
+    T: ModelType,
 {
     fn default() -> Self {
-        InverseModel {
-            n_dim: 0,
-            size: 0,
-            data: vec![],
+        Self {
+            size: Default::default(),
+            data: Default::default(),
         }
     }
 }

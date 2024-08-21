@@ -10,8 +10,7 @@ use nom::{
 
 use rapimt_core::{
     action::{ActionEncoder, CodedAction, UncodedAction},
-    r#match::Rule,
-    r#match::{PredicateEngine, PredicateInner},
+    r#match::{PredicateEngine, Rule},
 };
 
 pub use default::{DefaultInstLoader, PortInfoBase, TypedAction};

@@ -14,8 +14,8 @@ use nom::{
 };
 
 use rapimt_core::{
-    action::{ActionEncoder, ActionType, UncodedAction},
-    r#match::{FieldMatch, Match, PredicateEngine, PredicateInner, Rule},
+    action::{Action, ActionEncoder, ActionType, Single, UncodedAction},
+    r#match::{FieldMatch, Match, PredicateEngine, Rule},
 };
 
 use crate::{
@@ -47,7 +47,7 @@ pub struct PortInfoBase {
     ports: RefCell<IndexMap<String, PortInfo, FxBuildHasher>>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct TypedAction<'a> {
     idx: u32,
     origin: &'a PortInfoBase,
@@ -65,6 +65,10 @@ impl Hash for TypedAction<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.idx.hash(state);
     }
+}
+
+impl<'o> Action<Single> for TypedAction<'o> {
+    type S = Self;
 }
 
 impl<'o> UncodedAction for TypedAction<'o> {

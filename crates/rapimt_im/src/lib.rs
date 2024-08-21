@@ -4,26 +4,32 @@ mod im;
 mod monitor;
 
 use rapimt_core::{
-    action::{CodedAction, CodedActions},
+    action::{Action, ModelType, Single},
     r#match::{PredicateInner, Rule},
 };
 
 pub use {im::InverseModel, monitor::DefaultFibMonitor};
 
-pub trait FibMonitor<P: PredicateInner, A: CodedAction> {
+pub trait FibMonitor<A: Action<Single> + Clone, P: PredicateInner> {
+    // Required methods
     fn clear(&mut self);
-    fn update<As: CodedActions<A>>(
+    fn update<OA: Action<T, S = A> + From<A>, T: ModelType>(
         &mut self,
         insertion: Vec<Rule<P, A>>,
         deletion: Vec<Rule<P, A>>,
-    ) -> InverseModel<P, A, As>;
-    fn insert<As: CodedActions<A>>(
+    ) -> InverseModel<OA, P, T>;
+
+    // Provided methods
+    fn insert<OA: Action<T, S = A> + From<A>, T: ModelType>(
         &mut self,
         insertion: Vec<Rule<P, A>>,
-    ) -> InverseModel<P, A, As> {
+    ) -> InverseModel<OA, P, T> {
         self.update(insertion, vec![])
     }
-    fn delete<As: CodedActions<A>>(&mut self, deletion: Vec<Rule<P, A>>) -> InverseModel<P, A, As> {
+    fn delete<OA: Action<T, S = A> + From<A>, T: ModelType>(
+        &mut self,
+        deletion: Vec<Rule<P, A>>,
+    ) -> InverseModel<OA, P, T> {
         self.update(vec![], deletion)
     }
 }

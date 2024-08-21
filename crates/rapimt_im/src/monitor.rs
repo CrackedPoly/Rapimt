@@ -2,8 +2,8 @@ use std::{cmp::Reverse, collections::HashMap, collections::HashSet, rc::Rc};
 
 use fxhash::FxBuildHasher;
 use rapimt_core::{
-    action::{ActionEncoder, CodedAction, CodedActions, UncodedAction},
-    r#match::{MaskedValue, MatchEncoder, Predicate, PredicateInner, Rule},
+    action::{Action, ModelType, Single},
+    r#match::{MaskedValue, MatchEncoder, Predicate, Rule},
     MAX_POS,
 };
 use rapimt_tpt::{Segmentizer, TernaryPatriciaTree};
@@ -14,28 +14,22 @@ use crate::{
 };
 
 #[allow(dead_code)]
-pub struct DefaultFibMonitor<'a, 'p, P, ME, A, AE>
+pub struct DefaultFibMonitor<'p, A, ME>
 where
-    P: PredicateInner,
+    A: Action<Single> + Clone,
     ME: MatchEncoder<'p>,
-    A: CodedAction,
-    AE: ActionEncoder<'a, A>,
 {
     engine: &'p ME,
-    codex: &'a AE,
-    local_ap: HashMap<A, Predicate<P>, FxBuildHasher>,
-    tpt: TernaryPatriciaTree<Rc<Rule<P, A>>>,
-    i_rules: Vec<Rc<Rule<P, A>>>,
-    d_rules: Vec<Rc<Rule<P, A>>>,
-    dim_hint: usize,
+    local_ap: HashMap<A, Predicate<ME::P>, FxBuildHasher>,
+    tpt: TernaryPatriciaTree<Rc<Rule<ME::P, A>>>,
+    i_rules: Vec<Rc<Rule<ME::P, A>>>,
+    d_rules: Vec<Rc<Rule<ME::P, A>>>,
 }
 
-impl<'a, 'p, P, ME, A, AE> FibMonitor<P, A> for DefaultFibMonitor<'a, 'p, P, ME, A, AE>
+impl<'p, A, ME> FibMonitor<A, ME::P> for DefaultFibMonitor<'p, A, ME>
 where
-    P: PredicateInner,
-    ME: MatchEncoder<'p, P = P>,
-    A: CodedAction,
-    AE: ActionEncoder<'a, A>,
+    A: Action<Single> + Default + Clone,
+    ME: MatchEncoder<'p>,
 {
     fn clear(&mut self) {
         self.tpt.clear();
@@ -43,11 +37,15 @@ where
         self.d_rules.clear();
     }
 
-    fn update<As: CodedActions<A>>(
+    fn update<OA, T>(
         &mut self,
-        insertion: Vec<Rule<P, A>>,
-        deletion: Vec<Rule<P, A>>,
-    ) -> InverseModel<P, A, As> {
+        insertion: Vec<Rule<ME::P, A>>,
+        deletion: Vec<Rule<ME::P, A>>,
+    ) -> InverseModel<OA, ME::P, T>
+    where
+        OA: Action<T, S = A> + From<A>,
+        T: ModelType,
+    {
         insertion.into_iter().for_each(|r| {
             let r = Rc::new(r);
             self.insert_tpt(r.clone());
@@ -63,27 +61,24 @@ where
     }
 }
 
-impl<'a, 'p, P, ME, UA, A, AE> DefaultFibMonitor<'a, 'p, P, ME, A, AE>
+impl<'p, A, ME> DefaultFibMonitor<'p, A, ME>
 where
-    P: PredicateInner,
-    ME: MatchEncoder<'p, P = P>,
-    UA: UncodedAction,
-    A: CodedAction,
-    AE: ActionEncoder<'a, A, UA = UA>,
+    A: Action<Single> + Default + Clone,
+    ME: MatchEncoder<'p>,
 {
-    fn insert_tpt(&mut self, rule: Rc<Rule<P, A>>) {
+    fn insert_tpt(&mut self, rule: Rc<Rule<ME::P, A>>) {
         rule.as_ref().origin.iter().for_each(|mv| {
             self.tpt.insert(rule.clone(), Segmentizer::from(*mv));
         });
     }
 
-    fn delete_tpt(&mut self, rule: Rc<Rule<P, A>>) {
+    fn delete_tpt(&mut self, rule: Rc<Rule<ME::P, A>>) {
         rule.as_ref().origin.iter().for_each(|mv| {
             self.tpt.delete(rule.clone(), Segmentizer::from(*mv));
         });
     }
 
-    fn search_tpt(&self, rule: Rc<Rule<P, A>>) -> HashSet<Rc<Rule<P, A>>> {
+    fn search_tpt(&self, rule: Rc<Rule<ME::P, A>>) -> HashSet<Rc<Rule<ME::P, A>>> {
         rule.as_ref()
             .origin
             .iter()
@@ -93,11 +88,11 @@ where
             })
     }
 
-    pub fn new(engine: &'p ME, codex: &'a AE, dim_hint: usize) -> Self {
+    pub fn new(engine: &'p ME) -> Self {
         // this is the default rule of every forwarding device
         let drop_rule = Rc::new(Rule {
             priority: -1,
-            action: codex.encode(codex.lookup("self")),
+            action: A::default(),
             predicate: engine.one(),
             origin: vec![MaskedValue::from((0u128, 0u128))],
         });
@@ -110,12 +105,10 @@ where
         let local_ap = HashMap::with_hasher(FxBuildHasher::default());
         DefaultFibMonitor {
             engine,
-            codex,
             local_ap,
             tpt,
             i_rules,
             d_rules,
-            dim_hint,
         }
     }
 
@@ -138,7 +131,7 @@ where
             }
             if !eff.is_empty() {
                 self.local_ap
-                    .entry(r.action)
+                    .entry(r.action.clone())
                     .and_modify(|p| *p |= &eff)
                     .or_insert(eff.clone());
                 no_overwrite -= &eff;
@@ -161,7 +154,7 @@ where
                     let eff = &y.predicate & &to_divide;
                     if !eff.is_empty() {
                         self.local_ap
-                            .entry(y.action)
+                            .entry(y.action.clone())
                             .and_modify(|p| *p |= &eff)
                             .or_insert(eff.clone());
                         no_overwrite -= &eff;
@@ -180,19 +173,14 @@ where
         self.d_rules.clear();
     }
 
-    fn current<As: CodedActions<A>>(&self) -> InverseModel<P, A, As> {
+    fn current<OA, T>(&self) -> InverseModel<OA, ME::P, T>
+    where
+        OA: Action<T, S = A> + From<A> + From<A>,
+        T: ModelType,
+    {
         self.local_ap
             .iter()
-            .map(|(a, p)| {
-                let actions = if self.dim_hint > 0 {
-                    let mut vec = Vec::with_capacity(self.dim_hint);
-                    vec.push(*a);
-                    As::from(vec)
-                } else {
-                    As::from(vec![*a])
-                };
-                ModelEntry::from((actions, p.clone()))
-            })
+            .map(|(a, p)| ModelEntry::from((OA::from(a.clone()), p.clone())))
             .collect::<Vec<_>>()
             .into()
     }
@@ -201,13 +189,13 @@ where
 #[cfg(test)]
 mod tests {
     use rapimt_core::{
-        action::seq_action::SeqActions,
+        action::{seq_action::SeqActions, Multiple, Single},
         r#match::{engine::RuddyPredicateEngine, family::MatchFamily},
     };
     use rapimt_io::{DefaultInstLoader, FibLoader, InstanceLoader};
 
-    use crate::monitor::DefaultFibMonitor;
     use crate::FibMonitor;
+    use crate::{monitor::DefaultFibMonitor, InverseModel};
 
     #[test]
     fn test_default_fib_monitor() {
@@ -233,11 +221,16 @@ mod tests {
         let (_, fibs) = FibLoader::load(&codex, &engine, fib).unwrap();
 
         // setup fib monitor
-        let mut fib_monitor = DefaultFibMonitor::new(&engine, &codex, 0);
+        let mut fib_monitor = DefaultFibMonitor::new(&engine);
 
         // two rules as an incremental update
         // im should have three entries: one default "drop", one 0.0.0.0/1 and one "192.168.1.0/24"
-        let im = fib_monitor.insert::<SeqActions<u32>>(fibs);
+        let im = fib_monitor.insert::<SeqActions<u32, 1>, Multiple>(fibs.clone());
+        assert_eq!(im.size, 3);
+        fib_monitor.clear();
+        let im = fib_monitor.insert::<u32, Single>(fibs);
+        assert_eq!(im.size, 3);
+        let im = InverseModel::<SeqActions<u32, 1>, _, Multiple>::from(im);
         assert_eq!(im.size, 3);
     }
 }

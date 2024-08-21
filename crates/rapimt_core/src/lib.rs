@@ -12,7 +12,10 @@ pub use crate::r#match::{
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        action::{seq_action, ActionEncoder, ActionType, CodedAction, CodedActions, UncodedAction},
+        action::{
+            seq_action, ActionEncoder, ActionType, CodedAction, CodedActions, ModelType, Multiple,
+            Single, UncodedAction,
+        },
         r#match::{
             engine::{RuddyPredicate, RuddyPredicateEngine},
             family::{HeaderBitOrder, HeaderBitStore, MatchFamily, HEADERSTORENUM, MAX_POS},

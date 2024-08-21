@@ -1,8 +1,8 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use rapimt_core::{
-    action::seq_action::SeqActions, r#match::engine::RuddyPredicateEngine,
-    r#match::family::MatchFamily,
+    action::{seq_action::SeqActions, Multiple},
+    r#match::{engine::RuddyPredicateEngine, family::MatchFamily},
 };
 use rapimt_im::{DefaultFibMonitor, FibMonitor, InverseModel};
 use rapimt_io::{
@@ -33,10 +33,9 @@ fn main() {
         })
         .collect();
 
-    let size = codexs.len();
-    let mut monitors: HashMap<String, DefaultFibMonitor<_, _, _, _>> = codexs
-        .iter()
-        .map(|(k, codex)| (k.clone(), DefaultFibMonitor::new(&engine, codex, size)))
+    let mut monitors: HashMap<String, DefaultFibMonitor<_, _>> = codexs
+        .keys()
+        .map(|k| (k.clone(), DefaultFibMonitor::new(&engine)))
         .collect();
 
     let mut monitor_timer = 0u128;
@@ -48,7 +47,10 @@ fn main() {
         let fib_cont = std::fs::read_to_string(format!("examples/stanford/fib/{}.fib", d)).unwrap();
         let fibs = FibLoader::load(&codexs[d], &engine, &fib_cont).unwrap().1;
         let _timer = SystemTime::now();
-        let im_update = monitors.get_mut(d).unwrap().insert::<SeqActions<u32>>(fibs);
+        let im_update = monitors
+            .get_mut(d)
+            .unwrap()
+            .insert::<SeqActions<u32, 16>, Multiple>(fibs);
         monitor_timer += _timer.elapsed().unwrap().as_nanos();
         im_updates.insert(d.clone(), im_update);
     }

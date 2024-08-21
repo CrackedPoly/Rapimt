@@ -45,7 +45,7 @@ use std::{
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign},
 };
 
-use crate::action::CodedAction;
+use crate::action::{Action, CodedAction, Single};
 use bitvec::prelude::*;
 
 use family::{FamilyDecl, HeaderBitOrder, HeaderBitStore, MatchFamily, HEADERSTORENUM};
@@ -479,14 +479,14 @@ where
 /// predicates.
 pub trait PredicateEngine<'a>: MatchEncoder<'a> {
     /// Deserialize a predicate according to the buffer.
-    fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Predicate<Self::P>>;
+    fn read_buffer(&'a self, buffer: &[u8]) -> Option<Predicate<Self::P>>;
     /// Serialize the predicate to the buffer.
     fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Option<usize>;
 }
 
 /// Rule is a local-representation of a flow entry.
-#[derive(Eq, PartialEq, Hash, Debug)]
-pub struct Rule<P: PredicateInner, A: CodedAction = u32> {
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
+pub struct Rule<P: PredicateInner, A: Action<Single> + Clone> {
     pub priority: i32,
     pub action: A,
     pub predicate: Predicate<P>,
