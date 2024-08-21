@@ -44,30 +44,29 @@ where
 ///
 /// ***The trait and the format are manufacture-specific.***
 #[allow(clippy::type_complexity)]
-pub trait FibLoader<'a, 'p, P, A = u32>
+pub trait FibLoader<'a, 'p, A = u32>
 where
     Self: ActionEncoder<'a, A>,
-    P: PredicateInner + 'p,
     A: CodedAction,
 {
     // Required method
-    fn _load<'x, 's: 'p, ME, Err>(
+    fn _load<'x, 's: 'p, PE, Err>(
         &'s self,
-        engine: &'p ME,
+        engine: &'p PE,
         content: &'x str,
-    ) -> IResult<(), (String, Vec<Rule<P, A>>), Err>
+    ) -> IResult<(), (String, Vec<Rule<PE::P, A>>), Err>
     where
-        ME: PredicateEngine<'p, P>,
+        PE: PredicateEngine<'p>,
         Err: ParseError<&'x str>;
 
     // Provided method
-    fn load<'x, 's: 'p, ME>(
+    fn load<'x, 's: 'p, PE>(
         &'s self,
-        engine: &'p ME,
+        engine: &'p PE,
         content: &'x str,
-    ) -> Result<(String, Vec<Rule<P, A>>), Error<&'x str>>
+    ) -> Result<(String, Vec<Rule<PE::P, A>>), Error<&'x str>>
     where
-        ME: PredicateEngine<'p, P>,
+        PE: PredicateEngine<'p>,
     {
         let res = self._load(engine, content).finish();
         match res {

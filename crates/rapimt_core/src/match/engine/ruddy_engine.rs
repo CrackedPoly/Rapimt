@@ -107,7 +107,7 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
     }
 }
 
-impl<'a> PredicateEngine<'a, RuddyPredicate<'a>> for RuddyPredicateEngine {
+impl<'a> PredicateEngine<'a> for RuddyPredicateEngine {
     fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Predicate<Self::P>> {
         let bdd = self.manager.borrow_mut().read_buffer(buffer);
         if let Some(bdd) = bdd {

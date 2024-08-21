@@ -121,102 +121,6 @@ impl From<(u64, u64)> for MaskedValue {
     }
 }
 
-/// PredicateEngine is a extended trait of MatchEncoder, which additionally enables serialization
-/// and deserialization of a predicate. It is useful when local storing or remote transmitting
-/// predicates.
-pub trait PredicateEngine<'a, P: PredicateInner>: MatchEncoder<'a, P = P> {
-    /// Deserialize a predicate according to the buffer.
-    fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Predicate<Self::P>>;
-    /// Serialize the predicate to the buffer.
-    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Option<usize>;
-}
-
-/// MatchEncoder parses field values and encodes them into predicates.
-pub trait MatchEncoder<'a>
-where
-    Self: 'a,
-{
-    type P: PredicateInner + 'a;
-    fn gc(&self) -> Option<usize>;
-    fn one(&'a self) -> Predicate<Self::P>;
-    fn zero(&'a self) -> Predicate<Self::P>;
-    fn family(&self) -> &MatchFamily;
-    fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Predicate<Self::P>;
-
-    fn encode_match(&'a self, fm: FieldMatch) -> (Predicate<Self::P>, Vec<MaskedValue>) {
-        let family = self.family();
-        match family.get_field_declaration(fm.field) {
-            Some(fdecl) => {
-                let from = fdecl.from;
-                let to = fdecl.to;
-                return match fm.cond {
-                    Match::ExactMatch { value } => {
-                        let mask: u128 = (1 << (to - from + 1)) - 1;
-                        (
-                            self._encode(value, mask, from, to),
-                            vec![MaskedValue::from((value << from, mask << from))],
-                        )
-                    }
-                    Match::TernaryMatch { value, mask } => (
-                        self._encode(value, mask, from, to),
-                        vec![MaskedValue::from((value << from, mask << from))],
-                    ),
-                    Match::RangeMatch { mut low, high } => {
-                        let mask: u128 = (1 << (to - from + 1)) - 1;
-                        let mut vm_pairs = vec![];
-                        loop {
-                            let t_zeros = low.trailing_zeros();
-                            let mut inc: u128 = 1 << t_zeros;
-                            low += inc;
-                            while low - 1 > high {
-                                inc >>= 1;
-                                low -= inc;
-                            }
-                            let t_zeros = inc.trailing_zeros();
-                            vm_pairs.push((low - inc, (mask >> t_zeros) << t_zeros));
-                            if low - 1 == high {
-                                break;
-                            }
-                        }
-                        let mut pred = self.zero();
-                        let mvs = vm_pairs
-                            .iter()
-                            .map(|(v, m)| {
-                                pred |= self._encode(*v, *m, from, to);
-                                MaskedValue::from((*v << from, *m << from))
-                            })
-                            .collect();
-                        (pred, mvs)
-                    }
-                };
-            }
-            _ => (self.one(), vec![MaskedValue::from((0u128, 0u128))]),
-        }
-    }
-
-    fn encode_matches(&'a self, fms: Vec<FieldMatch>) -> (Predicate<Self::P>, Vec<MaskedValue>) {
-        let mut pred = self.zero();
-        let mut mvs = vec![];
-        for fm in fms {
-            let (p, sub_mvs) = self.encode_match(fm);
-            pred |= p;
-            if mvs.is_empty() {
-                mvs.extend(sub_mvs)
-            } else {
-                // do a cross product of mvs and sub_mvs
-                let mut new_mvs = vec![];
-                for mv in mvs.iter() {
-                    for sub_mv in sub_mvs.iter() {
-                        new_mvs.push(*mv | *sub_mv);
-                    }
-                }
-                mvs = new_mvs;
-            }
-        }
-        (pred, mvs)
-    }
-}
-
 /// Inner representation of a predicate should implement Copy (most important) to evade high cost.
 pub trait PredicateInner:
     Copy + Eq + PartialEq + Ord + PartialOrd + Hash + Display + Debug
@@ -483,6 +387,101 @@ impl<P: PredicateInner> SubAssign<&Self> for Predicate<P> {
         self.0 = self.0.comp(&rhs.0)._ref();
         prev._deref();
     }
+}
+/// MatchEncoder parses field values and encodes them into predicates.
+pub trait MatchEncoder<'a>
+where
+    Self: 'a,
+{
+    type P: PredicateInner + 'a;
+    fn gc(&self) -> Option<usize>;
+    fn one(&'a self) -> Predicate<Self::P>;
+    fn zero(&'a self) -> Predicate<Self::P>;
+    fn family(&self) -> &MatchFamily;
+    fn _encode(&'a self, value: u128, mask: u128, from: u32, to: u32) -> Predicate<Self::P>;
+
+    fn encode_match(&'a self, fm: FieldMatch) -> (Predicate<Self::P>, Vec<MaskedValue>) {
+        let family = self.family();
+        match family.get_field_declaration(fm.field) {
+            Some(fdecl) => {
+                let from = fdecl.from;
+                let to = fdecl.to;
+                return match fm.cond {
+                    Match::ExactMatch { value } => {
+                        let mask: u128 = (1 << (to - from + 1)) - 1;
+                        (
+                            self._encode(value, mask, from, to),
+                            vec![MaskedValue::from((value << from, mask << from))],
+                        )
+                    }
+                    Match::TernaryMatch { value, mask } => (
+                        self._encode(value, mask, from, to),
+                        vec![MaskedValue::from((value << from, mask << from))],
+                    ),
+                    Match::RangeMatch { mut low, high } => {
+                        let mask: u128 = (1 << (to - from + 1)) - 1;
+                        let mut vm_pairs = vec![];
+                        loop {
+                            let t_zeros = low.trailing_zeros();
+                            let mut inc: u128 = 1 << t_zeros;
+                            low += inc;
+                            while low - 1 > high {
+                                inc >>= 1;
+                                low -= inc;
+                            }
+                            let t_zeros = inc.trailing_zeros();
+                            vm_pairs.push((low - inc, (mask >> t_zeros) << t_zeros));
+                            if low - 1 == high {
+                                break;
+                            }
+                        }
+                        let mut pred = self.zero();
+                        let mvs = vm_pairs
+                            .iter()
+                            .map(|(v, m)| {
+                                pred |= self._encode(*v, *m, from, to);
+                                MaskedValue::from((*v << from, *m << from))
+                            })
+                            .collect();
+                        (pred, mvs)
+                    }
+                };
+            }
+            _ => (self.one(), vec![MaskedValue::from((0u128, 0u128))]),
+        }
+    }
+
+    fn encode_matches(&'a self, fms: Vec<FieldMatch>) -> (Predicate<Self::P>, Vec<MaskedValue>) {
+        let mut pred = self.zero();
+        let mut mvs = vec![];
+        for fm in fms {
+            let (p, sub_mvs) = self.encode_match(fm);
+            pred |= p;
+            if mvs.is_empty() {
+                mvs.extend(sub_mvs)
+            } else {
+                // do a cross product of mvs and sub_mvs
+                let mut new_mvs = vec![];
+                for mv in mvs.iter() {
+                    for sub_mv in sub_mvs.iter() {
+                        new_mvs.push(*mv | *sub_mv);
+                    }
+                }
+                mvs = new_mvs;
+            }
+        }
+        (pred, mvs)
+    }
+}
+
+/// PredicateEngine is a extended trait of MatchEncoder, which additionally enables serialization
+/// and deserialization of a predicate. It is useful when local storing or remote transmitting
+/// predicates.
+pub trait PredicateEngine<'a>: MatchEncoder<'a> {
+    /// Deserialize a predicate according to the buffer.
+    fn read_buffer(&'a self, buffer: &Vec<u8>) -> Option<Predicate<Self::P>>;
+    /// Serialize the predicate to the buffer.
+    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Option<usize>;
 }
 
 /// Rule is a local-representation of a flow entry.

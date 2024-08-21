@@ -248,14 +248,14 @@ fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
     ))
 }
 
-impl<'a, 'p, P: PredicateInner + 'p> FibLoader<'a, 'p, P> for PortInfoBase {
-    fn _load<'x, 's: 'p, ME, Err>(
+impl<'a, 'p> FibLoader<'a, 'p> for PortInfoBase {
+    fn _load<'x, 's: 'p, PE, Err>(
         &'s self,
-        engine: &'p ME,
+        engine: &'p PE,
         content: &'x str,
-    ) -> IResult<(), (String, Vec<Rule<P, u32>>), Err>
+    ) -> IResult<(), (String, Vec<Rule<PE::P, u32>>), Err>
     where
-        ME: PredicateEngine<'p, P>,
+        PE: PredicateEngine<'p>,
         Err: ParseError<&'x str>,
     {
         let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
@@ -268,13 +268,12 @@ impl<'a, 'p, P: PredicateInner + 'p> FibLoader<'a, 'p, P> for PortInfoBase {
 /// Returns a closure that parses an IPv4 rule and returns a [Rule] instance.
 /// The closure have the lifetime of MatchEncoder's 'p and ActionEncoder's 'a,
 /// where 'a == 'p.
-fn parse_ipv4_rule<'x, 'a: 'p, 'p: 'a, ME, AE, P, E>(
-    engine: &'p ME,
+fn parse_ipv4_rule<'x, 'a: 'p, 'p: 'a, PE, AE, E>(
+    engine: &'p PE,
     action_encoder: &'a AE,
-) -> impl Fn(&'x str) -> IResult<&'x str, Rule<P, u32>, E> + 'p + 'a
+) -> impl Fn(&'x str) -> IResult<&'x str, Rule<PE::P, u32>, E> + 'p + 'a
 where
-    P: PredicateInner + 'p,
-    ME: PredicateEngine<'p, P>,
+    PE: PredicateEngine<'p>,
     AE: ActionEncoder<'a>,
     E: ParseError<&'x str>,
 {
