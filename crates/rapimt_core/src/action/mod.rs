@@ -81,6 +81,10 @@ macro_rules! impl_action {
 
 impl_action!(u16, u32, u64, usize, i16, i32, i64, isize);
 
+impl Action<Single> for String {
+    type S = Self;
+}
+
 /// ActionEncoder is essentially an instance that has all information about this device's topology
 /// (name, ports, port mode, neighbors), it can encode/decode raw action into/from CodedAction
 /// (which is more compact), and lookup the action by port name.
