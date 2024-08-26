@@ -111,8 +111,7 @@ where
     type UA: UncodedAction + Clone + 'a;
     fn encode(&'a self, action: Self::UA) -> A;
     fn decode(&'a self, coded_action: A) -> Self::UA;
-    /// Lookup action by port name, if not found, create an action and return.
-    fn lookup(&'a self, port_name: &str) -> Self::UA;
+    fn get(&'a self, port_name: &str) -> Option<Self::UA>;
 }
 
 pub trait CodedActions:

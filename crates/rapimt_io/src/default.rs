@@ -1,8 +1,4 @@
-use std::{
-    borrow::Borrow,
-    cell::RefCell,
-    hash::Hash,
-};
+use std::{cell::RefCell, hash::Hash};
 
 use fxhash::FxBuildHasher;
 use indexmap::map::IndexMap;
@@ -79,7 +75,6 @@ impl<'o> UncodedAction for TypedAction<'o> {
             TypedAction::Typed(t) => {
                 t.origin
                     .ports
-                    .borrow()
                     .get_index(t.idx as usize - 1)
                     .unwrap()
                     .1
@@ -88,7 +83,7 @@ impl<'o> UncodedAction for TypedAction<'o> {
         }
     }
 
-    /// This method must return Vec because PortInfoBase must use RefCell internally.
+    /// This method must return Vec because TypedAction::Default does not have any reference
     #[allow(refining_impl_trait_reachable)]
     fn get_next_hops(&self) -> Vec<&str> {
         match self {
@@ -96,14 +91,13 @@ impl<'o> UncodedAction for TypedAction<'o> {
             TypedAction::Typed(t) => t
                 .origin
                 .ports
-                .borrow()
                 .get_index(t.idx as usize - 1)
                 .unwrap()
                 .1
                 .p_ports
                 .iter()
-                .map(|s| t.origin.nbrs.borrow().get(s).unwrap().name.as_str())
-                .collect()
+                .map(|s| t.origin.nbrs.get(s).unwrap().name.as_str())
+                .collect(),
         }
     }
 }
@@ -115,7 +109,7 @@ pub struct PortInfoBase {
     // port name -> neighbor info
     nbrs: IndexMap<String, NeighborInfo, FxBuildHasher>,
     // port name -> port info
-    ports: RefCell<IndexMap<String, PortInfo, FxBuildHasher>>,
+    ports: IndexMap<String, PortInfo, FxBuildHasher>,
 }
 
 impl<'a> ActionEncoder<'a> for PortInfoBase {
@@ -140,11 +134,9 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
         }
     }
 
-    fn lookup(&'a self, port_name: &str) -> Self::UA {
+    fn get(&'a self, port_name: &str) -> Option<Self::UA> {
         // since A == 0 means no overwrite, we can't use 0 as CodedAction
-        let res = self
-            .ports
-            .borrow()
+        self.ports
             .get_full(port_name)
             .map(|(idx, _, _)| match idx {
                 0 => TypedAction::Default,
@@ -152,28 +144,7 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
                     idx: idx as u32 + 1,
                     origin: self,
                 }),
-            });
-        match res {
-            Some(a) => a,
-            None => {
-                let idx = self
-                    .ports
-                    .borrow_mut()
-                    .insert_full(
-                        port_name.to_owned(),
-                        PortInfo {
-                            name: port_name.to_owned(),
-                            mode: ActionType::FORWARD,
-                            p_ports: vec![port_name.to_owned()],
-                        },
-                    )
-                    .0;
-                TypedAction::Typed(TypedActionInner {
-                    idx: idx as u32 + 1,
-                    origin: self,
-                })
-            }
-        }
+            })
     }
 }
 
@@ -222,7 +193,7 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultInstLoader
             PortInfoBase {
                 dev: dev.to_string(),
                 nbrs: nbrs.into_inner(),
-                ports,
+                ports: ports.into_inner(),
             },
         ))
     }
@@ -349,7 +320,7 @@ where
             cond: Match::TernaryMatch { value, mask },
         };
         let (pred, mvs) = engine.encode_match(fm);
-        let action = action_encoder.encode(action_encoder.lookup(port_name));
+        let action = action_encoder.encode(action_encoder.get(port_name).unwrap());
         Ok((
             rest,
             Rule {
@@ -390,7 +361,7 @@ where
             cond: Match::TernaryMatch { value, mask },
         };
         let (pred, mvs) = engine.encode_match(fm);
-        let action = action_encoder.lookup(port_name);
+        let action = action_encoder.get(port_name).unwrap();
         Ok((
             rest,
             Rule {
@@ -405,8 +376,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Borrow;
-
     use rapimt_core::r#match::{engine::RuddyPredicateEngine, family::MatchFamily::Inet4Family};
 
     use super::*;
@@ -423,40 +392,40 @@ mod tests {
         "#;
         let base = loader.load(spec).unwrap();
         assert_eq!(base.dev, "dev0");
-        assert_eq!(base.nbrs.borrow().len(), 2);
-        assert_eq!(base.ports.borrow().len(), 5);
+        assert_eq!(base.nbrs.len(), 2);
+        assert_eq!(base.ports.len(), 5);
 
-        let binding = base.nbrs.borrow();
-        let n1 = binding.get("ge0").unwrap();
+        let nbrs = &base.nbrs;
+        let n1 = nbrs.get("ge0").unwrap();
         assert_eq!(n1.name, "dev1");
         assert!(!n1.external);
-        let n2 = binding.get("ge1").unwrap();
+        let n2 = nbrs.get("ge1").unwrap();
         assert_eq!(n2.name, "dev2");
         assert!(!n2.external);
 
-        let bindings = base.ports.borrow();
+        let ports = &base.ports;
 
-        let (_, p0) = bindings.borrow().get_index(0).unwrap();
+        let (_, p0) = ports.get_index(0).unwrap();
         assert_eq!(p0.name, "self");
         assert_eq!(p0.mode, ActionType::DROP);
         assert_eq!(p0.p_ports.len(), 0);
-        let (_, p1) = bindings.borrow().get_index(1).unwrap();
+        let (_, p1) = ports.get_index(1).unwrap();
         assert_eq!(p1.name, "ge0");
         assert_eq!(p1.mode, ActionType::FORWARD);
         assert_eq!(p1.p_ports.len(), 1);
         assert_eq!(p1.p_ports[0], "ge0");
-        let (_, p2) = bindings.borrow().get_index(2).unwrap();
+        let (_, p2) = ports.get_index(2).unwrap();
         assert_eq!(p2.name, "ge1");
         assert_eq!(p2.mode, ActionType::FORWARD);
         assert_eq!(p2.p_ports.len(), 1);
         assert_eq!(p2.p_ports[0], "ge1");
-        let (_, p3) = bindings.borrow().get_index(3).unwrap();
+        let (_, p3) = ports.get_index(3).unwrap();
         assert_eq!(p3.name, "gi0");
         assert_eq!(p3.mode, ActionType::ECMP);
         assert_eq!(p3.p_ports.len(), 2);
         assert_eq!(p3.p_ports[0], "ge0");
         assert_eq!(p3.p_ports[1], "ge1");
-        let (_, p4) = bindings.borrow().get_index(4).unwrap();
+        let (_, p4) = ports.get_index(4).unwrap();
         assert_eq!(p4.name, "gi1");
         assert_eq!(p4.mode, ActionType::FLOOD);
         assert_eq!(p4.p_ports.len(), 2);
