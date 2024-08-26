@@ -1,4 +1,4 @@
-# Rapimt(*Rap*id *I*nverse *M*odel *T*ransformation)
+# <a>Rap</a>id <a>I</a>nverse <a>M</a>odel <a>T</a>ransformation
 
 [![Test](https://github.com/CrackedPoly/Rapimt/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/CrackedPoly/Rapimt/actions/workflows/tests.yml)
 [![Docs](https://github.com/CrackedPoly/Rapimt/actions/workflows/docs.yml/badge.svg)](https://github.com/CrackedPoly/Rapimt/actions/workflows/docs.yml)

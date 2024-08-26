@@ -33,7 +33,7 @@ pub struct FieldDeclaration {
 
 pub trait FamilyDecl {
     fn get_max_pos(&self) -> u128;
-    fn get_field_declaration(&self, name: String) -> Option<&FieldDeclaration>;
+    fn get_field_declaration(&self, name: &str) -> Option<&FieldDeclaration>;
 }
 
 type Inet4BitStore = u32;
@@ -59,7 +59,6 @@ pub const HEADERSTORENUM: usize = INET4STORENUM;
 pub const MAX_POS: usize = INET4MAXPOS;
 
 /// Supported header families.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum MatchFamily {
     /// # The IPv4 match family
@@ -136,7 +135,7 @@ impl FamilyDecl for MatchFamily {
         }
     }
 
-    fn get_field_declaration(&self, name: String) -> Option<&FieldDeclaration> {
+    fn get_field_declaration(&self, name: &str) -> Option<&FieldDeclaration> {
         let fields = self.get_fields();
         fields.iter().find(|f| f.name == name)
     }

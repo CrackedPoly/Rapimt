@@ -9,7 +9,7 @@ use super::{Action, Multiple};
 
 /// A sequence of actions stored in Vec. Generics `N` is the hint capacity of the Vec, which is
 /// usually the network size.
-#[derive(Eq, PartialEq, Hash, Debug)]
+#[derive(Eq, PartialEq, Hash, Clone, Debug, Default)]
 pub struct SeqActions<A: CodedAction, const N: usize>(Vec<A>);
 
 impl<A: CodedAction, const N: usize> Action<Multiple> for SeqActions<A, N> {

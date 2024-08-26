@@ -1,4 +1,8 @@
-use std::{borrow::Borrow, cell::RefCell, hash::Hash};
+use std::{
+    borrow::Borrow,
+    cell::RefCell,
+    hash::Hash,
+};
 
 use fxhash::FxBuildHasher;
 use indexmap::map::IndexMap;
@@ -23,10 +27,10 @@ use crate::{
     {FibLoader, InstanceLoader},
 };
 
-#[allow(dead_code)]
 #[derive(Debug)]
 struct NeighborInfo {
     name: String,
+    #[allow(dead_code)]
     external: bool,
 }
 
@@ -37,31 +41,28 @@ struct PortInfo {
     p_ports: Vec<String>, // vector of physical port names
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct PortInfoBase {
-    dev: String,
-    // port name -> neighbor info
-    nbrs: IndexMap<String, NeighborInfo, FxBuildHasher>,
-    // port name -> port info
-    ports: RefCell<IndexMap<String, PortInfo, FxBuildHasher>>,
-}
-
 #[derive(Clone, Copy, Debug)]
-pub struct TypedAction<'a> {
+pub struct TypedActionInner<'a> {
     idx: u32,
     origin: &'a PortInfoBase,
 }
 
-impl PartialEq for TypedAction<'_> {
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
+pub enum TypedAction<'a> {
+    Typed(TypedActionInner<'a>),
+    #[default]
+    Default,
+}
+
+impl PartialEq for TypedActionInner<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.idx == other.idx && std::ptr::eq(self.origin, other.origin)
     }
 }
 
-impl Eq for TypedAction<'_> {}
+impl Eq for TypedActionInner<'_> {}
 
-impl Hash for TypedAction<'_> {
+impl Hash for TypedActionInner<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.idx.hash(state);
     }
@@ -73,27 +74,48 @@ impl<'o> Action<Single> for TypedAction<'o> {
 
 impl<'o> UncodedAction for TypedAction<'o> {
     fn get_type(&self) -> ActionType {
-        self.origin
-            .ports
-            .borrow()
-            .get_index(self.idx as usize - 1)
-            .unwrap()
-            .1
-            .mode
+        match self {
+            TypedAction::Default => ActionType::DROP,
+            TypedAction::Typed(t) => {
+                t.origin
+                    .ports
+                    .borrow()
+                    .get_index(t.idx as usize - 1)
+                    .unwrap()
+                    .1
+                    .mode
+            }
+        }
     }
 
+    /// This method must return Vec because PortInfoBase must use RefCell internally.
+    #[allow(refining_impl_trait_reachable)]
     fn get_next_hops(&self) -> Vec<&str> {
-        self.origin
-            .ports
-            .borrow()
-            .get_index(self.idx as usize - 1)
-            .unwrap()
-            .1
-            .p_ports
-            .iter()
-            .map(|s| self.origin.nbrs.borrow().get(s).unwrap().name.as_str())
-            .collect()
+        match self {
+            TypedAction::Default => vec![],
+            TypedAction::Typed(t) => t
+                .origin
+                .ports
+                .borrow()
+                .get_index(t.idx as usize - 1)
+                .unwrap()
+                .1
+                .p_ports
+                .iter()
+                .map(|s| t.origin.nbrs.borrow().get(s).unwrap().name.as_str())
+                .collect()
+        }
     }
+}
+
+#[derive(Debug)]
+pub struct PortInfoBase {
+    #[allow(dead_code)]
+    dev: String,
+    // port name -> neighbor info
+    nbrs: IndexMap<String, NeighborInfo, FxBuildHasher>,
+    // port name -> port info
+    ports: RefCell<IndexMap<String, PortInfo, FxBuildHasher>>,
 }
 
 impl<'a> ActionEncoder<'a> for PortInfoBase {
@@ -101,14 +123,20 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
 
     #[inline]
     fn encode(&'a self, action: Self::UA) -> u32 {
-        action.idx
+        match action {
+            TypedAction::Default => 0,
+            TypedAction::Typed(t) => t.idx,
+        }
     }
 
     #[inline]
     fn decode(&'a self, coded_action: u32) -> Self::UA {
-        TypedAction {
-            idx: coded_action,
-            origin: self,
+        match coded_action {
+            0 => TypedAction::Default,
+            _ => TypedAction::Typed(TypedActionInner {
+                idx: coded_action,
+                origin: self,
+            }),
         }
     }
 
@@ -118,9 +146,12 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
             .ports
             .borrow()
             .get_full(port_name)
-            .map(|(idx, _, _)| TypedAction {
-                idx: idx as u32 + 1,
-                origin: self,
+            .map(|(idx, _, _)| match idx {
+                0 => TypedAction::Default,
+                _ => TypedAction::Typed(TypedActionInner {
+                    idx: idx as u32 + 1,
+                    origin: self,
+                }),
             });
         match res {
             Some(a) => a,
@@ -137,10 +168,10 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
                         },
                     )
                     .0;
-                TypedAction {
+                TypedAction::Typed(TypedActionInner {
                     idx: idx as u32 + 1,
                     origin: self,
-                }
+                })
             }
         }
     }
@@ -252,7 +283,7 @@ fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
     ))
 }
 
-impl<'a, 'p> FibLoader<'a, 'p> for PortInfoBase {
+impl<'a, 'p> FibLoader<'a, 'p, u32> for PortInfoBase {
     fn _load<'x, 's: 'p, PE, Err>(
         &'s self,
         engine: &'p PE,
@@ -264,6 +295,24 @@ impl<'a, 'p> FibLoader<'a, 'p> for PortInfoBase {
     {
         let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
         let (rest, rules) = separated_list0(multispace1, parse_ipv4_rule(engine, self))(rest)?;
+        let (_, _) = all_consuming(multispace0)(rest)?;
+        Ok(((), (dev.to_owned(), rules)))
+    }
+}
+
+impl<'a, 'p: 'a> FibLoader<'a, 'p, TypedAction<'a>> for PortInfoBase {
+    fn _load<'x, 's: 'p, PE, Err>(
+        &'s self,
+        engine: &'p PE,
+        content: &'x str,
+    ) -> IResult<(), (String, Vec<Rule<PE::P, TypedAction<'a>>>), Err>
+    where
+        PE: PredicateEngine<'p>,
+        Err: ParseError<&'x str>,
+    {
+        let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
+        let (rest, rules) =
+            separated_list0(multispace1, parse_ipv4_rule_uncoded(engine, self))(rest)?;
         let (_, _) = all_consuming(multispace0)(rest)?;
         Ok(((), (dev.to_owned(), rules)))
     }
@@ -296,11 +345,52 @@ where
         let value = value as u128;
         let mask: u128 = ((1 << p_len) - 1) << (32 - p_len);
         let fm = FieldMatch {
-            field: "dip".to_owned(),
+            field: "dip",
             cond: Match::TernaryMatch { value, mask },
         };
         let (pred, mvs) = engine.encode_match(fm);
         let action = action_encoder.encode(action_encoder.lookup(port_name));
+        Ok((
+            rest,
+            Rule {
+                priority: prio,
+                action,
+                predicate: pred,
+                origin: mvs,
+            },
+        ))
+    }
+}
+
+fn parse_ipv4_rule_uncoded<'x, 'a: 'p, 'p: 'a, PE, AE, E>(
+    engine: &'p PE,
+    action_encoder: &'a AE,
+) -> impl Fn(&'x str) -> IResult<&'x str, Rule<PE::P, AE::UA>, E> + 'p + 'a
+where
+    PE: PredicateEngine<'p>,
+    AE: ActionEncoder<'a>,
+    E: ParseError<&'x str>,
+{
+    move |input| {
+        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = tuple((
+            tag("fw"),
+            multispace1,
+            alt((parse_ipv4_dotted, parse_ipv4_num)),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<u32>().unwrap()),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<i32>().unwrap()),
+            multispace1,
+            parse_port,
+        ))(input)?;
+        let value = value as u128;
+        let mask: u128 = ((1 << p_len) - 1) << (32 - p_len);
+        let fm = FieldMatch {
+            field: "dip",
+            cond: Match::TernaryMatch { value, mask },
+        };
+        let (pred, mvs) = engine.encode_match(fm);
+        let action = action_encoder.lookup(port_name);
         Ok((
             rest,
             Rule {
@@ -346,23 +436,27 @@ mod tests {
 
         let bindings = base.ports.borrow();
 
-        let p1 = bindings.borrow().get("ge0").unwrap();
+        let (_, p0) = bindings.borrow().get_index(0).unwrap();
+        assert_eq!(p0.name, "self");
+        assert_eq!(p0.mode, ActionType::DROP);
+        assert_eq!(p0.p_ports.len(), 0);
+        let (_, p1) = bindings.borrow().get_index(1).unwrap();
         assert_eq!(p1.name, "ge0");
         assert_eq!(p1.mode, ActionType::FORWARD);
         assert_eq!(p1.p_ports.len(), 1);
         assert_eq!(p1.p_ports[0], "ge0");
-        let p2 = bindings.borrow().get("ge1").unwrap();
+        let (_, p2) = bindings.borrow().get_index(2).unwrap();
         assert_eq!(p2.name, "ge1");
         assert_eq!(p2.mode, ActionType::FORWARD);
         assert_eq!(p2.p_ports.len(), 1);
         assert_eq!(p2.p_ports[0], "ge1");
-        let p3 = bindings.borrow().get("gi0").unwrap();
+        let (_, p3) = bindings.borrow().get_index(3).unwrap();
         assert_eq!(p3.name, "gi0");
         assert_eq!(p3.mode, ActionType::ECMP);
         assert_eq!(p3.p_ports.len(), 2);
         assert_eq!(p3.p_ports[0], "ge0");
         assert_eq!(p3.p_ports[1], "ge1");
-        let p4 = bindings.borrow().get("gi1").unwrap();
+        let (_, p4) = bindings.borrow().get_index(4).unwrap();
         assert_eq!(p4.name, "gi1");
         assert_eq!(p4.mode, ActionType::FLOOD);
         assert_eq!(p4.p_ports.len(), 2);
@@ -375,7 +469,7 @@ mod tests {
         fw 0.0.0.0 0 0 ge0
         "#;
         let engine = RuddyPredicateEngine::init(1000, 100, Inet4Family);
-        let (dev, rules) = base.load(&engine, fib).unwrap();
+        let (dev, rules) = FibLoader::<u32>::load(&base, &engine, fib).unwrap();
         assert_eq!(dev, "dev0");
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
@@ -384,6 +478,15 @@ mod tests {
         assert_eq!(rules[1].predicate.to_string(), "dip: 0.0.0.0/0");
         assert_eq!(rules[1].priority, 0);
         assert_eq!(rules[1].action, 2);
+        let (dev, rules) = FibLoader::<TypedAction>::load(&base, &engine, fib).unwrap();
+        assert_eq!(dev, "dev0");
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
+        assert_eq!(rules[0].priority, 24);
+        assert_eq!(base.encode(rules[0].action), 4);
+        assert_eq!(rules[1].predicate.to_string(), "dip: 0.0.0.0/0");
+        assert_eq!(rules[1].priority, 0);
+        assert_eq!(base.encode(rules[1].action), 2);
     }
 
     #[test]
@@ -397,30 +500,29 @@ mod tests {
         port gi1 flood ge0 ge1
         "#;
         let base = loader.load(content).unwrap();
-        let a1 = base.encode(TypedAction {
+        let a0 = base.encode(TypedAction::Default);
+        let a1 = base.encode(TypedAction::Typed(TypedActionInner {
             idx: 1,
             origin: &base,
-        });
-        let a2 = base.encode(TypedAction {
+        }));
+        let a2 = base.encode(TypedAction::Typed(TypedActionInner {
             idx: 2,
             origin: &base,
-        });
-        let a3 = base.encode(TypedAction {
+        }));
+        let a3 = base.encode(TypedAction::Typed(TypedActionInner {
             idx: 3,
             origin: &base,
-        });
-        let a4 = base.encode(TypedAction {
+        }));
+        let a4 = base.encode(TypedAction::Typed(TypedActionInner {
             idx: 4,
             origin: &base,
-        });
+        }));
+        assert_eq!(a0, 0);
         assert_eq!(a1, 1);
         assert_eq!(a2, 2);
         assert_eq!(a3, 3);
         assert_eq!(a4, 4);
-        assert_eq!(base.decode(a1).idx, 1);
-        assert_eq!(base.decode(a2).idx, 2);
-        assert_eq!(base.decode(a3).idx, 3);
-        assert_eq!(base.decode(a4).idx, 4);
+        assert_eq!(base.decode(a0).get_type(), ActionType::DROP);
         assert_eq!(base.decode(a1).get_type(), ActionType::DROP);
         assert_eq!(base.decode(a2).get_type(), ActionType::FORWARD);
         assert_eq!(base.decode(a3).get_type(), ActionType::FORWARD);

@@ -51,9 +51,8 @@ use bitvec::prelude::*;
 use family::{FamilyDecl, HeaderBitOrder, HeaderBitStore, MatchFamily, HEADERSTORENUM};
 
 /// Match is a match condition for a field.
-#[allow(dead_code)]
+/// No field should exceed 128 bits for now, so u128 should be adequate.
 #[derive(Clone, Debug)]
-// No field should exceed 128 bits for now, so u128 should be adequate.
 pub enum Match {
     ExactMatch { value: u128 },
     TernaryMatch { value: u128, mask: u128 },
@@ -62,8 +61,8 @@ pub enum Match {
 
 /// FieldMatch contains the name and the condition of a match in a field.
 #[derive(Debug)]
-pub struct FieldMatch {
-    pub field: String,
+pub struct FieldMatch<'a> {
+    pub field: &'a str,
     pub cond: Match,
 }
 
@@ -236,6 +235,7 @@ impl<P: PredicateInner> Display for Predicate<P> {
     }
 }
 
+/// `!prediate` consumes the predicate.
 impl<P: PredicateInner> Not for Predicate<P> {
     type Output = Predicate<P>;
 
@@ -245,6 +245,7 @@ impl<P: PredicateInner> Not for Predicate<P> {
     }
 }
 
+/// `!(&prediate)` consumes the predicate reference.
 impl<P: PredicateInner> Not for &'_ Predicate<P> {
     type Output = Predicate<P>;
 
@@ -254,140 +255,114 @@ impl<P: PredicateInner> Not for &'_ Predicate<P> {
     }
 }
 
-impl<P: PredicateInner> BitAnd for Predicate<P> {
-    type Output = Predicate<P>;
+macro_rules! predicate_bitand_impl {
+    ($lhs:ty, $rhs:ty) => {
+        impl<P: PredicateInner> BitAnd<$rhs> for $lhs {
+            type Output = Predicate<P>;
 
-    #[inline]
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Predicate::new(self.0.and(&rhs.0))
-    }
+            #[inline]
+            fn bitand(self, rhs: $rhs) -> Self::Output {
+                Predicate::new(self.0.and(&rhs.0))
+            }
+        }
+    };
 }
 
-impl<P: PredicateInner> BitAnd<&Self> for Predicate<P> {
-    type Output = Predicate<P>;
-
-    #[inline]
-    fn bitand(self, rhs: &Self) -> Self::Output {
-        Predicate::new(self.0.and(&rhs.0))
-    }
+macro_rules! predicate_bitand_assign_impl {
+    ($lhs:ty, $rhs:ty) => {
+        impl<P: PredicateInner> BitAndAssign<$rhs> for $lhs {
+            #[inline]
+            fn bitand_assign(&mut self, rhs: $rhs) {
+                let prev = self.0;
+                self.0 = self.0.and(&rhs.0)._ref();
+                prev._deref();
+            }
+        }
+    };
 }
 
-impl<P: PredicateInner> BitAnd for &'_ Predicate<P> {
-    type Output = Predicate<P>;
+macro_rules! predicate_bitor_impl {
+    ($lhs:ty, $rhs:ty) => {
+        impl<P: PredicateInner> BitOr<$rhs> for $lhs {
+            type Output = Predicate<P>;
 
-    #[inline]
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Predicate::new(self.0.and(&rhs.0))
-    }
+            #[inline]
+            fn bitor(self, rhs: $rhs) -> Self::Output {
+                Predicate(self.0.or(&rhs.0)._ref())
+            }
+        }
+    };
 }
 
-impl<P: PredicateInner> BitAndAssign for Predicate<P> {
-    #[inline]
-    fn bitand_assign(&mut self, rhs: Self) {
-        let prev = self.0;
-        self.0 = self.0.and(&rhs.0)._ref();
-        prev._deref();
-    }
+macro_rules! predicate_bitor_assign_impl {
+    ($lhs:ty, $rhs:ty) => {
+        impl<P: PredicateInner> BitOrAssign<$rhs> for $lhs {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: $rhs) {
+                let prev = self.0;
+                self.0 = self.0.or(&rhs.0)._ref();
+                prev._deref();
+            }
+        }
+    };
 }
 
-impl<P: PredicateInner> BitAndAssign<&Self> for Predicate<P> {
-    #[inline]
-    fn bitand_assign(&mut self, rhs: &Self) {
-        let prev = self.0;
-        self.0 = self.0.and(&rhs.0)._ref();
-        prev._deref();
-    }
+macro_rules! predicate_sub_impl {
+    ($lhs:ty, $rhs:ty) => {
+        impl<P: PredicateInner> Sub<$rhs> for $lhs {
+            type Output = Predicate<P>;
+
+            #[inline]
+            fn sub(self, rhs: $rhs) -> Self::Output {
+                Predicate(self.0.comp(&rhs.0)._ref())
+            }
+        }
+    };
 }
 
-impl<P: PredicateInner> BitOr for Predicate<P> {
-    type Output = Predicate<P>;
-
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Predicate(self.0.or(&rhs.0)._ref())
-    }
+macro_rules! predicate_sub_assign_impl {
+    ($lhs:ty, $rhs:ty) => {
+        impl<P: PredicateInner> SubAssign<$rhs> for $lhs {
+            #[inline]
+            fn sub_assign(&mut self, rhs: $rhs) {
+                let prev = self.0;
+                self.0 = self.0.comp(&rhs.0)._ref();
+                prev._deref();
+            }
+        }
+    };
 }
 
-impl<P: PredicateInner> BitOr<&Self> for Predicate<P> {
-    type Output = Predicate<P>;
+predicate_bitand_impl!(Predicate<P>, Predicate<P>);
+predicate_bitand_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitand_impl!(&Predicate<P>, Predicate<P>);
+predicate_bitand_impl!(&Predicate<P>, &Predicate<P>);
 
-    #[inline]
-    fn bitor(self, rhs: &Self) -> Self::Output {
-        Predicate(self.0.or(&rhs.0)._ref())
-    }
-}
+predicate_bitand_assign_impl!(Predicate<P>, Predicate<P>);
+predicate_bitand_assign_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitand_assign_impl!(&mut Predicate<P>, Predicate<P>);
+predicate_bitand_assign_impl!(&mut Predicate<P>, &Predicate<P>);
 
-impl<P: PredicateInner> BitOr for &'_ Predicate<P> {
-    type Output = Predicate<P>;
+predicate_bitor_impl!(Predicate<P>, Predicate<P>);
+predicate_bitor_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitor_impl!(&Predicate<P>, Predicate<P>);
+predicate_bitor_impl!(&Predicate<P>, &Predicate<P>);
 
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Predicate(self.0.or(&rhs.0)._ref())
-    }
-}
+predicate_bitor_assign_impl!(Predicate<P>, Predicate<P>);
+predicate_bitor_assign_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitor_assign_impl!(&mut Predicate<P>, Predicate<P>);
+predicate_bitor_assign_impl!(&mut Predicate<P>, &Predicate<P>);
 
-impl<P: PredicateInner> BitOrAssign for Predicate<P> {
-    #[inline]
-    fn bitor_assign(&mut self, rhs: Self) {
-        let prev = self.0;
-        self.0 = self.0.or(&rhs.0)._ref();
-        prev._deref();
-    }
-}
+predicate_sub_impl!(Predicate<P>, Predicate<P>);
+predicate_sub_impl!(Predicate<P>, &Predicate<P>);
+predicate_sub_impl!(&Predicate<P>, Predicate<P>);
+predicate_sub_impl!(&Predicate<P>, &Predicate<P>);
 
-impl<P: PredicateInner> BitOrAssign<&Self> for Predicate<P> {
-    #[inline]
-    fn bitor_assign(&mut self, rhs: &Self) {
-        let prev = self.0;
-        self.0 = self.0.or(&rhs.0)._ref();
-        prev._deref();
-    }
-}
+predicate_sub_assign_impl!(Predicate<P>, Predicate<P>);
+predicate_sub_assign_impl!(Predicate<P>, &Predicate<P>);
+predicate_sub_assign_impl!(&mut Predicate<P>, Predicate<P>);
+predicate_sub_assign_impl!(&mut Predicate<P>, &Predicate<P>);
 
-impl<P: PredicateInner> Sub for Predicate<P> {
-    type Output = Predicate<P>;
-
-    #[inline]
-    fn sub(self, rhs: Self) -> Self::Output {
-        Predicate(self.0.comp(&rhs.0)._ref())
-    }
-}
-
-impl<P: PredicateInner> Sub<&Self> for Predicate<P> {
-    type Output = Predicate<P>;
-
-    #[inline]
-    fn sub(self, rhs: &Self) -> Self::Output {
-        Predicate(self.0.comp(&rhs.0)._ref())
-    }
-}
-
-impl<P: PredicateInner> Sub for &'_ Predicate<P> {
-    type Output = Predicate<P>;
-
-    #[inline]
-    fn sub(self, rhs: Self) -> Self::Output {
-        Predicate(self.0.comp(&rhs.0)._ref())
-    }
-}
-
-impl<P: PredicateInner> SubAssign for Predicate<P> {
-    #[inline]
-    fn sub_assign(&mut self, rhs: Self) {
-        let prev = self.0;
-        self.0 = self.0.comp(&rhs.0)._ref();
-        prev._deref();
-    }
-}
-
-impl<P: PredicateInner> SubAssign<&Self> for Predicate<P> {
-    #[inline]
-    fn sub_assign(&mut self, rhs: &Self) {
-        let prev = self.0;
-        self.0 = self.0.comp(&rhs.0)._ref();
-        prev._deref();
-    }
-}
 /// MatchEncoder parses field values and encodes them into predicates.
 pub trait MatchEncoder<'a>
 where
@@ -486,7 +461,7 @@ pub trait PredicateEngine<'a>: MatchEncoder<'a> {
 
 /// Rule is a local-representation of a flow entry.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
-pub struct Rule<P: PredicateInner, A: Action<Single> + Clone> {
+pub struct Rule<P: PredicateInner, A: Action<Single>> {
     pub priority: i32,
     pub action: A,
     pub predicate: Predicate<P>,
@@ -562,7 +537,7 @@ pub mod macros {
     macro_rules! fm_ipv4_from {
         ($field:expr, $value:expr) => {
             FieldMatch {
-                field: $field.to_owned(),
+                field: $field,
                 cond: ipv4_to_match($value.to_owned()),
             }
         };
@@ -577,7 +552,7 @@ pub mod macros {
     macro_rules! fm_exact_from {
         ($field:expr, $value:expr) => {
             FieldMatch {
-                field: $field.to_owned(),
+                field: $field,
                 cond: Match::ExactMatch { value: $value },
             }
         };
@@ -592,7 +567,7 @@ pub mod macros {
     macro_rules! fm_range_from {
         ($field:expr, $low:expr, $high:expr) => {
             FieldMatch {
-                field: $field.to_owned(),
+                field: $field,
                 cond: Match::RangeMatch {
                     low: $low,
                     high: $high,

@@ -9,7 +9,7 @@ use nom::{
 };
 
 use rapimt_core::{
-    action::{ActionEncoder, CodedAction, UncodedAction},
+    action::{Action, ActionEncoder, CodedAction, Single, UncodedAction},
     r#match::{PredicateEngine, Rule},
 };
 
@@ -43,10 +43,9 @@ where
 ///
 /// ***The trait and the format are manufacture-specific.***
 #[allow(clippy::type_complexity)]
-pub trait FibLoader<'a, 'p, A = u32>
+pub trait FibLoader<'a, 'p, A>
 where
-    Self: ActionEncoder<'a, A>,
-    A: CodedAction,
+    A: Action<Single>,
 {
     // Required method
     fn _load<'x, 's: 'p, PE, Err>(
@@ -89,7 +88,6 @@ pub mod basic {
         use nom::Err::Error;
         use nom::IResult;
 
-        #[allow(dead_code)]
         pub enum IoErrorKind {
             DevName,
             PortName,

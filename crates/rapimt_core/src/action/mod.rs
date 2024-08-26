@@ -36,13 +36,16 @@ pub trait ModelType {}
 
 /// Single means the action is one-dimensional, it can only contain an action of a single device.
 pub struct Single {}
-impl ModelType for Single {}
+
 /// Multiple means the action is multi-dimensional, it can contain multiple actions of multiple
 /// devices.
 pub struct Multiple {}
+
 impl ModelType for Multiple {}
 
-pub trait Action<T: ModelType>: Eq + Hash + Debug {
+impl ModelType for Single {}
+
+pub trait Action<T: ModelType>: Eq + Hash + Clone + Debug + Default {
     // What single form of action it contains. For structs that implements Action<Single>, it must
     // be itself, while for Action<Multiple> structs, it should define one.
     type S: Action<Single>;
@@ -55,7 +58,7 @@ pub trait Action<T: ModelType>: Eq + Hash + Debug {
 /// ***This trait is manufacture-specific.***
 pub trait UncodedAction: Action<Single> {
     fn get_type(&self) -> ActionType;
-    fn get_next_hops(&self) -> Vec<&str>;
+    fn get_next_hops(&self) -> impl IntoIterator<Item = &str>;
 }
 
 /// CodedAction should have fixed size and can live in stack to achieve better performance.
@@ -64,7 +67,18 @@ pub trait UncodedAction: Action<Single> {
 ///
 /// ***It seems an integer is sufficient, but we leave this trait for flexibility***
 pub trait CodedAction:
-    Action<Single> + Eq + PartialEq + Ord + PartialOrd + Display + Debug + Default + Hash + Sized + Copy
+    Action<Single>
+    + Eq
+    + PartialEq
+    + Ord
+    + PartialOrd
+    + Display
+    + Debug
+    + Default
+    + Hash
+    + Sized
+    + Copy
+    + Clone
 {
 }
 
@@ -94,9 +108,10 @@ pub trait ActionEncoder<'a, A: CodedAction = u32>
 where
     Self: 'a,
 {
-    type UA: UncodedAction + 'a;
+    type UA: UncodedAction + Clone + 'a;
     fn encode(&'a self, action: Self::UA) -> A;
     fn decode(&'a self, coded_action: A) -> Self::UA;
+    /// Lookup action by port name, if not found, create an action and return.
     fn lookup(&'a self, port_name: &str) -> Self::UA;
 }
 
@@ -105,6 +120,7 @@ pub trait CodedActions:
     + From<<Self as Action<Multiple>>::S>
     + Index<usize, Output = <Self as Action<Multiple>>::S>
     + IndexMut<usize, Output = <Self as Action<Multiple>>::S>
+    + Clone
     + Hash
     + Eq
 {

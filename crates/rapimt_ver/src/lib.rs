@@ -1,26 +1,21 @@
 //! Defines Verification traits and implementations.
 use rapimt_core::prelude::{Predicate, PredicateInner};
 
-pub trait Invariant<P>
-where
-    P: PredicateInner,
-{
+pub trait Invariant {
+    type P: PredicateInner;
+
     fn name(&self) -> &str;
-    fn header_space(&self) -> Predicate<P>;
+    fn header_space(&self) -> Predicate<Self::P>;
 }
 
-pub enum Requirement<P>
-where
-    P: PredicateInner,
-{
+pub enum Requirement<P: PredicateInner> {
     Reachability(Reachability<P>),
     MinHopCount(MinHopCount<P>),
 }
 
-impl<P> Invariant<P> for Requirement<P>
-where
-    P: PredicateInner,
-{
+impl<P: PredicateInner> Invariant for Requirement<P> {
+    type P = P;
+
     fn name(&self) -> &str {
         match self {
             Requirement::Reachability(r) => r.name.as_str(),
@@ -35,18 +30,12 @@ where
     }
 }
 
-pub struct Reachability<P>
-where
-    P: PredicateInner,
-{
+pub struct Reachability<P: PredicateInner> {
     pub name: String,
     pub header_space: Predicate<P>,
 }
 
-pub struct MinHopCount<P>
-where
-    P: PredicateInner,
-{
+pub struct MinHopCount<P: PredicateInner> {
     pub name: String,
     pub header_space: Predicate<P>,
 }

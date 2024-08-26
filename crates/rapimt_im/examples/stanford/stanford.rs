@@ -65,5 +65,5 @@ fn main() {
     }
     println!("Monitor refresh time: {} us", monitor_timer / 1000);
     println!("Inverse model << time: {} us", im_timer / 1000);
-    dbg!(im.size);
+    dbg!(im.len());
 }
