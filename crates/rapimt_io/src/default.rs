@@ -127,7 +127,7 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
         }
     }
 
-    fn get(&'a self, port_name: &str) -> Option<Self::UA> {
+    fn lookup(&'a self, port_name: &str) -> Option<Self::UA> {
         // since A == 0 means no overwrite, we can't use 0 as CodedAction
         self.ports.get_full(port_name).map(|(idx, _, _)| match idx {
             0 => TypedAction::Default,
@@ -323,7 +323,7 @@ where
             cond: Match::TernaryMatch { value, mask },
         };
         let (pred, mvs) = engine.encode_match(fm);
-        let action = action_encoder.encode(action_encoder.get(port_name).unwrap());
+        let action = action_encoder.encode(action_encoder.lookup(port_name).unwrap());
         Ok((
             rest,
             Rule {
@@ -364,7 +364,7 @@ where
             cond: Match::TernaryMatch { value, mask },
         };
         let (pred, mvs) = engine.encode_match(fm);
-        let action = action_encoder.get(port_name).unwrap();
+        let action = action_encoder.lookup(port_name).unwrap();
         Ok((
             rest,
             Rule {

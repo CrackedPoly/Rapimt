@@ -112,7 +112,7 @@ where
     type UA: UncodedAction + 'a;
     fn encode(&'a self, action: Self::UA) -> Self::A;
     fn decode(&'a self, coded_action: Self::A) -> Self::UA;
-    fn get(&'a self, port_name: &str) -> Option<Self::UA>;
+    fn lookup(&'a self, port_name: &str) -> Option<Self::UA>;
 }
 
 pub trait CodedActions:
