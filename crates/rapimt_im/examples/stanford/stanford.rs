@@ -50,7 +50,7 @@ fn main() {
         let im_update = monitors
             .get_mut(d)
             .unwrap()
-            .insert::<SeqActions<u32, 16>, Multiple>(fibs);
+            .insert::<SeqActions<usize, 16>, Multiple>(fibs);
         monitor_timer += _timer.elapsed().unwrap().as_nanos();
         im_updates.insert(d.clone(), im_update);
     }

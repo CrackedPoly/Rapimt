@@ -56,9 +56,9 @@ pub trait Action<T: ModelType>: Eq + Hash + Clone + Debug + Default {
 /// encoder that represents the device.
 ///
 /// ***This trait is manufacture-specific.***
-pub trait UncodedAction: Action<Single> {
+pub trait UncodedAction: Action<Single> + Clone {
     fn get_type(&self) -> ActionType;
-    fn get_next_hops(&self) -> impl IntoIterator<Item = &str>;
+    fn get_next_hops(&self) -> impl IntoIterator<Item = impl AsRef<str>>;
 }
 
 /// CodedAction should have fixed size and can live in stack to achieve better performance.
@@ -104,13 +104,14 @@ impl Action<Single> for String {
 /// (which is more compact), and lookup the action by port name.
 ///
 /// ***This trait is manufacture-specific.***
-pub trait ActionEncoder<'a, A: CodedAction = u32>
+pub trait ActionEncoder<'a>
 where
     Self: 'a,
 {
-    type UA: UncodedAction + Clone + 'a;
-    fn encode(&'a self, action: Self::UA) -> A;
-    fn decode(&'a self, coded_action: A) -> Self::UA;
+    type A: CodedAction;
+    type UA: UncodedAction + 'a;
+    fn encode(&'a self, action: Self::UA) -> Self::A;
+    fn decode(&'a self, coded_action: Self::A) -> Self::UA;
     fn get(&'a self, port_name: &str) -> Option<Self::UA>;
 }
 

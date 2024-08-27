@@ -34,14 +34,18 @@ struct NeighborInfo {
 struct PortInfo {
     name: String,
     mode: ActionType,
-    p_ports: Vec<String>, // vector of physical port names
+    p_ports: Vec<String>,   // physical port names
+    neighbors: Vec<String>, // neighbor names
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct TypedActionInner<'a> {
-    idx: u32,
+    idx: usize,
     origin: &'a PortInfoBase,
 }
+
+// For TypedAction::Default in get_next_hops()
+static EMPTY_NEIGHBOR: Vec<String> = vec![];
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum TypedAction<'a> {
@@ -72,32 +76,19 @@ impl<'o> UncodedAction for TypedAction<'o> {
     fn get_type(&self) -> ActionType {
         match self {
             TypedAction::Default => ActionType::DROP,
-            TypedAction::Typed(t) => {
-                t.origin
-                    .ports
-                    .get_index(t.idx as usize - 1)
-                    .unwrap()
-                    .1
-                    .mode
-            }
+            TypedAction::Typed(t) => t.origin.ports.get_index(t.idx - 1).unwrap().1.mode,
         }
     }
 
-    /// This method must return Vec because TypedAction::Default does not have any reference
     #[allow(refining_impl_trait_reachable)]
-    fn get_next_hops(&self) -> Vec<&str> {
+    fn get_next_hops(&self) -> impl IntoIterator<Item = impl AsRef<str>> {
+        // let closure = |s: &String| s.as_str();
         match self {
-            TypedAction::Default => vec![],
-            TypedAction::Typed(t) => t
-                .origin
-                .ports
-                .get_index(t.idx as usize - 1)
-                .unwrap()
-                .1
-                .p_ports
-                .iter()
-                .map(|s| t.origin.nbrs.get(s).unwrap().name.as_str())
-                .collect(),
+            TypedAction::Default => EMPTY_NEIGHBOR.iter(),
+            TypedAction::Typed(t) => {
+                let (_, port_info) = t.origin.ports.get_index(t.idx - 1).unwrap();
+                port_info.p_ports.iter()
+            }
         }
     }
 }
@@ -107,16 +98,18 @@ pub struct PortInfoBase {
     #[allow(dead_code)]
     dev: String,
     // port name -> neighbor info
+    #[allow(dead_code)]
     nbrs: IndexMap<String, NeighborInfo, FxBuildHasher>,
     // port name -> port info
     ports: IndexMap<String, PortInfo, FxBuildHasher>,
 }
 
 impl<'a> ActionEncoder<'a> for PortInfoBase {
+    type A = usize;
     type UA = TypedAction<'a>;
 
     #[inline]
-    fn encode(&'a self, action: Self::UA) -> u32 {
+    fn encode(&'a self, action: Self::UA) -> usize {
         match action {
             TypedAction::Default => 0,
             TypedAction::Typed(t) => t.idx,
@@ -124,7 +117,7 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
     }
 
     #[inline]
-    fn decode(&'a self, coded_action: u32) -> Self::UA {
+    fn decode(&'a self, coded_action: usize) -> Self::UA {
         match coded_action {
             0 => TypedAction::Default,
             _ => TypedAction::Typed(TypedActionInner {
@@ -136,22 +129,20 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
 
     fn get(&'a self, port_name: &str) -> Option<Self::UA> {
         // since A == 0 means no overwrite, we can't use 0 as CodedAction
-        self.ports
-            .get_full(port_name)
-            .map(|(idx, _, _)| match idx {
-                0 => TypedAction::Default,
-                _ => TypedAction::Typed(TypedActionInner {
-                    idx: idx as u32 + 1,
-                    origin: self,
-                }),
-            })
+        self.ports.get_full(port_name).map(|(idx, _, _)| match idx {
+            0 => TypedAction::Default,
+            _ => TypedAction::Typed(TypedActionInner {
+                idx: idx + 1,
+                origin: self,
+            }),
+        })
     }
 }
 
 #[derive(Default)]
 pub struct DefaultInstLoader {}
 
-impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultInstLoader {
+impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>, usize> for DefaultInstLoader {
     fn _load<'x, E: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), PortInfoBase, E> {
         let nbrs = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
         let ports = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
@@ -161,6 +152,7 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultInstLoader
                 name: "self".to_owned(),
                 mode: ActionType::DROP,
                 p_ports: vec![],
+                neighbors: vec![],
             },
         );
 
@@ -171,6 +163,7 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultInstLoader
                     name: port_name.to_owned(),
                     mode: ActionType::FORWARD,
                     p_ports: vec![port_name.to_owned()],
+                    neighbors: vec![],
                 },
             );
             nbrs.borrow_mut().insert(port_name.to_owned(), nbr);
@@ -188,12 +181,21 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>> for DefaultInstLoader
             )),
         )(rest)?;
         let (_, _) = all_consuming(multispace0)(rest)?;
+        let nbrs = nbrs.into_inner();
+        let mut ports = ports.into_inner();
+        for (_, port_info) in ports.iter_mut() {
+            for p_port_name in &port_info.p_ports {
+                if let Some(p_port) = nbrs.get(p_port_name) {
+                    port_info.neighbors.push(p_port.name.clone());
+                }
+            }
+        }
         Ok((
             (),
             PortInfoBase {
                 dev: dev.to_string(),
-                nbrs: nbrs.into_inner(),
-                ports: ports.into_inner(),
+                nbrs,
+                ports,
             },
         ))
     }
@@ -233,6 +235,7 @@ fn parse_port_info<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a st
             name: port.to_owned(),
             mode,
             p_ports: ports.iter().map(|s| (*(*s)).to_owned()).collect(),
+            neighbors: vec![],
         },
     ));
 }
@@ -254,12 +257,12 @@ fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
     ))
 }
 
-impl<'a, 'p> FibLoader<'a, 'p, u32> for PortInfoBase {
+impl<'a, 'p> FibLoader<'a, 'p, usize> for PortInfoBase {
     fn _load<'x, 's: 'p, PE, Err>(
         &'s self,
         engine: &'p PE,
         content: &'x str,
-    ) -> IResult<(), (String, Vec<Rule<PE::P, u32>>), Err>
+    ) -> IResult<(), (String, Vec<Rule<PE::P, usize>>), Err>
     where
         PE: PredicateEngine<'p>,
         Err: ParseError<&'x str>,
@@ -295,7 +298,7 @@ impl<'a, 'p: 'a> FibLoader<'a, 'p, TypedAction<'a>> for PortInfoBase {
 fn parse_ipv4_rule<'x, 'a: 'p, 'p: 'a, PE, AE, E>(
     engine: &'p PE,
     action_encoder: &'a AE,
-) -> impl Fn(&'x str) -> IResult<&'x str, Rule<PE::P, u32>, E> + 'p + 'a
+) -> impl Fn(&'x str) -> IResult<&'x str, Rule<PE::P, AE::A>, E> + 'p + 'a
 where
     PE: PredicateEngine<'p>,
     AE: ActionEncoder<'a>,
@@ -438,7 +441,7 @@ mod tests {
         fw 0.0.0.0 0 0 ge0
         "#;
         let engine = RuddyPredicateEngine::init(1000, 100, Inet4Family);
-        let (dev, rules) = FibLoader::<u32>::load(&base, &engine, fib).unwrap();
+        let (dev, rules) = FibLoader::<usize>::load(&base, &engine, fib).unwrap();
         assert_eq!(dev, "dev0");
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
@@ -496,6 +499,13 @@ mod tests {
         assert_eq!(base.decode(a2).get_type(), ActionType::FORWARD);
         assert_eq!(base.decode(a3).get_type(), ActionType::FORWARD);
         assert_eq!(base.decode(a4).get_type(), ActionType::ECMP);
-        assert!(base.decode(a4).get_next_hops().contains(&"dev2"));
+        assert_eq!(
+            base.decode(a4)
+                .get_next_hops()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .len(),
+            2
+        );
     }
 }

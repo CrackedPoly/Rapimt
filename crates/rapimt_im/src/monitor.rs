@@ -224,22 +224,22 @@ mod tests {
         let family = MatchFamily::Inet4Family;
         let engine = RuddyPredicateEngine::init(100, 10, family);
 
-        // load fib rules and encode action to u32 with codex
-        let (_, fibs) = FibLoader::<u32>::load(&codex, &engine, fib).unwrap();
+        // load fib rules and encode action to usize with codex
+        let (_, fibs) = FibLoader::<usize>::load(&codex, &engine, fib).unwrap();
 
         // setup fib monitor
         let mut fib_monitor = DefaultFibMonitor::new(&engine);
 
         // two rules as an incremental update
         // im should have three entries: one default "drop", one 0.0.0.0/1 and one "192.168.1.0/24"
-        let im = fib_monitor.insert::<SeqActions<u32, 1>, Multiple>(fibs.clone());
+        let im = fib_monitor.insert::<SeqActions<usize, 1>, Multiple>(fibs.clone());
         assert_eq!(im.len(), 3);
 
         fib_monitor.clear();
-        let im = fib_monitor.insert::<u32, Single>(fibs);
+        let im = fib_monitor.insert::<usize, Single>(fibs);
         assert_eq!(im.len(), 3);
 
-        let im = InverseModel::<SeqActions<u32, 1>, _, Multiple>::from(im);
+        let im = InverseModel::<SeqActions<usize, 1>, _, Multiple>::from(im);
         assert_eq!(im.len(), 3);
 
         // load fib rules and encode action to TypedAction with codex, run the same as above

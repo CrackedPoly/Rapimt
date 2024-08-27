@@ -19,9 +19,9 @@ pub use default::{DefaultInstLoader, PortInfoBase, TypedAction};
 /// according to some format.
 ///
 /// ***The trait and the format are manufacture-specific.***
-pub trait InstanceLoader<'a, AE, UA, A = u32>
+pub trait InstanceLoader<'a, AE, UA, A>
 where
-    AE: ActionEncoder<'a, A>,
+    AE: ActionEncoder<'a>,
     UA: UncodedAction,
     A: CodedAction,
 {
