@@ -1,7 +1,9 @@
-use std::{cell::RefCell, hash::Hash};
+use std::{
+    borrow::Borrow, cell::UnsafeCell, collections::HashSet, hash::{Hash, Hasher}
+};
 
 use fxhash::FxBuildHasher;
-use indexmap::map::IndexMap;
+use indexmap::IndexSet;
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -23,29 +25,73 @@ use crate::{
     {FibLoader, InstanceLoader},
 };
 
+/// [NeighborInfo] keeps the mapping of the physical port to the neighbor device.
 #[derive(Debug)]
 struct NeighborInfo {
-    name: String,
+    p_port: String,
+    neighbor: String,
     #[allow(dead_code)]
     external: bool,
 }
 
+impl PartialEq for NeighborInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.p_port == other.p_port
+    }
+}
+
+impl Eq for NeighborInfo {}
+
+impl Hash for NeighborInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.p_port.hash(state);
+    }
+}
+
+impl Borrow<str> for NeighborInfo {
+    fn borrow(&self) -> &str {
+        &self.p_port
+    }
+}
+
+/// [PortInfo] keeps the mapping of a port to a group of physical ports and corresponding
+/// neighbors.
 #[derive(Debug)]
-struct PortInfo {
+struct PortInfo<'a> {
     name: String,
     mode: ActionType,
-    p_ports: Vec<String>,   // physical port names
-    neighbors: Vec<String>, // neighbor names
+    p_ports: Vec<&'a str>,   // physical port names, reference to NeighborInfo
+    neighbors: Vec<&'a str>, // neighbor names, reference to NeighborInfo
+}
+
+impl<'a> PartialEq for PortInfo<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl<'a> Eq for PortInfo<'a> {}
+
+impl<'a> Hash for PortInfo<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl<'a> Borrow<str> for PortInfo<'a> {
+    fn borrow(&self) -> &str {
+        &self.name
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct TypedActionInner<'a> {
     idx: usize,
-    origin: &'a PortInfoBase,
+    origin: &'a PortInfoBase<'a>,
 }
 
-// For TypedAction::Default in get_next_hops()
-static EMPTY_NEIGHBOR: Vec<String> = vec![];
+// For TypedAction::Default to implement get_next_hops() in UncodedActionk
+static EMPTY_NEIGHBOR: Vec<&'static str> = vec![];
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum TypedAction<'a> {
@@ -68,43 +114,46 @@ impl Hash for TypedActionInner<'_> {
     }
 }
 
-impl<'o> Action<Single> for TypedAction<'o> {
+impl<'a> Action<Single> for TypedAction<'a> {
     type S = Self;
 }
 
-impl<'o> UncodedAction for TypedAction<'o> {
+impl<'a> UncodedAction for TypedAction<'a> {
     fn get_type(&self) -> ActionType {
         match self {
             TypedAction::Default => ActionType::DROP,
-            TypedAction::Typed(t) => t.origin.ports.get_index(t.idx - 1).unwrap().1.mode,
+            TypedAction::Typed(t) => t.origin.ports.get_index(t.idx - 1).unwrap().mode,
         }
     }
 
     #[allow(refining_impl_trait_reachable)]
     fn get_next_hops(&self) -> impl IntoIterator<Item = impl AsRef<str>> {
-        // let closure = |s: &String| s.as_str();
         match self {
             TypedAction::Default => EMPTY_NEIGHBOR.iter(),
             TypedAction::Typed(t) => {
-                let (_, port_info) = t.origin.ports.get_index(t.idx - 1).unwrap();
+                let port_info = t.origin.ports.get_index(t.idx - 1).unwrap();
                 port_info.p_ports.iter()
             }
         }
     }
 }
 
+/// [PortInfoBase] stores the information of a device's ports and neighbors.
+///
+/// Lifetime 'a is used to sync the lifetime of [PortInfo] and [NeighborInfo], bacause [PortInfo]
+/// stores references to data inside [NeighborInfo] to avoid duplication.
 #[derive(Debug)]
-pub struct PortInfoBase {
+pub struct PortInfoBase<'a> {
     #[allow(dead_code)]
     dev: String,
     // port name -> neighbor info
     #[allow(dead_code)]
-    nbrs: IndexMap<String, NeighborInfo, FxBuildHasher>,
+    nbrs: HashSet<NeighborInfo, FxBuildHasher>,
     // port name -> port info
-    ports: IndexMap<String, PortInfo, FxBuildHasher>,
+    ports: IndexSet<PortInfo<'a>, FxBuildHasher>,
 }
 
-impl<'a> ActionEncoder<'a> for PortInfoBase {
+impl<'a> ActionEncoder<'a> for PortInfoBase<'a> {
     type A = usize;
     type UA = TypedAction<'a>;
 
@@ -129,7 +178,7 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
 
     fn lookup(&'a self, port_name: &str) -> Option<Self::UA> {
         // since A == 0 means no overwrite, we can't use 0 as CodedAction
-        self.ports.get_full(port_name).map(|(idx, _, _)| match idx {
+        self.ports.get_full(port_name).map(|(idx, _)| match idx {
             0 => TypedAction::Default,
             _ => TypedAction::Typed(TypedActionInner {
                 idx: idx + 1,
@@ -142,34 +191,46 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
 #[derive(Default)]
 pub struct DefaultInstLoader {}
 
-impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>, usize> for DefaultInstLoader {
-    fn _load<'x, E: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), PortInfoBase, E> {
-        let nbrs = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
-        let ports = RefCell::new(IndexMap::with_hasher(FxBuildHasher::default()));
-        ports.borrow_mut().insert(
-            "self".to_owned(),
-            PortInfo {
-                name: "self".to_owned(),
-                mode: ActionType::DROP,
-                p_ports: vec![],
-                neighbors: vec![],
-            },
-        );
+impl<'a> InstanceLoader<'a, PortInfoBase<'a>> for DefaultInstLoader {
+    fn _load<'x, E: ParseError<&'x str>>(
+        &self,
+        content: &'x str,
+    ) -> IResult<(), PortInfoBase<'a>, E> {
+        let nbrs = UnsafeCell::new(HashSet::with_hasher(FxBuildHasher::default()));
+        let ports = UnsafeCell::new(vec![PortInfo {
+            name: "self".to_owned(),
+            mode: ActionType::DROP,
+            p_ports: vec![],
+            neighbors: vec![],
+        }]);
 
         let capture_nbr_info = |(port_name, nbr): (&str, NeighborInfo)| {
-            ports.borrow_mut().insert(
-                port_name.to_owned(),
-                PortInfo {
-                    name: port_name.to_owned(),
-                    mode: ActionType::FORWARD,
-                    p_ports: vec![port_name.to_owned()],
-                    neighbors: vec![],
-                },
-            );
-            nbrs.borrow_mut().insert(port_name.to_owned(), nbr);
+            let nbrs_mut = unsafe { &mut *nbrs.get() };
+            let ports_mut = unsafe { &mut *ports.get() };
+            nbrs_mut.insert(nbr);
+            let nbr = nbrs_mut.get(port_name).unwrap();
+            ports_mut.push(PortInfo {
+                name: port_name.to_owned(),
+                mode: ActionType::FORWARD,
+                p_ports: vec![nbr.p_port.as_ref()],
+                neighbors: vec![],
+            });
         };
         let capture_port_info = |port: PortInfo| {
-            ports.borrow_mut().insert(port.name.to_owned(), port);
+            let nbrs_mut = unsafe { &mut *nbrs.get() };
+            let ports_mut = unsafe { &mut *ports.get() };
+            // use reference of p_port in nbrs
+            let p_ports_in_map = port
+                .p_ports
+                .iter()
+                .map(|s| nbrs_mut.get(*s).unwrap().p_port.as_ref())
+                .collect();
+            ports_mut.push(PortInfo {
+                name: port.name,
+                mode: port.mode,
+                p_ports: p_ports_in_map,
+                neighbors: vec![],
+            })
         };
 
         let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
@@ -181,20 +242,23 @@ impl<'o> InstanceLoader<'o, PortInfoBase, TypedAction<'o>, usize> for DefaultIns
             )),
         )(rest)?;
         let (_, _) = all_consuming(multispace0)(rest)?;
-        let nbrs = nbrs.into_inner();
-        let mut ports = ports.into_inner();
-        for (_, port_info) in ports.iter_mut() {
+
+        let nbrs_mut = unsafe { &mut *nbrs.get() };
+        let ports_mut = unsafe { &mut *ports.get() };
+        // fill in neighbors of PortInfo in ports
+        for port_info in ports_mut.iter_mut() {
             for p_port_name in &port_info.p_ports {
-                if let Some(p_port) = nbrs.get(p_port_name) {
-                    port_info.neighbors.push(p_port.name.clone());
+                if let Some(p_port) = nbrs_mut.get(*p_port_name) {
+                    port_info.neighbors.push(p_port.neighbor.as_ref());
                 }
             }
         }
+        let ports = IndexSet::<PortInfo, FxBuildHasher>::from_iter(ports.into_inner());
         Ok((
             (),
             PortInfoBase {
                 dev: dev.to_string(),
-                nbrs,
+                nbrs: nbrs.into_inner(),
                 ports,
             },
         ))
@@ -229,15 +293,15 @@ fn parse_port_info<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a st
         multispace1,
         separated_list1(multispace1, parse_port),
     ))(rest)?;
-    return Ok((
+    Ok((
         rest,
         PortInfo {
             name: port.to_owned(),
             mode,
-            p_ports: ports.iter().map(|s| (*(*s)).to_owned()).collect(),
+            p_ports: ports.to_vec(),
             neighbors: vec![],
         },
-    ));
+    ))
 }
 
 fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
@@ -250,22 +314,26 @@ fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
         (
             port,
             NeighborInfo {
-                name: nbr.to_owned(),
+                p_port: port.to_owned(),
+                neighbor: nbr.to_owned(),
                 external: false,
             },
         ),
     ))
 }
 
-impl<'a, 'p> FibLoader<'a, 'p, usize> for PortInfoBase {
-    fn _load<'x, 's: 'p, PE, Err>(
-        &'s self,
+// implement for PortInfoBase::A (Coded Action)
+impl<'a> FibLoader<'a, usize> for PortInfoBase<'a> {
+    fn _load<'x, 'p, PE, Err>(
+        &'a self,
         engine: &'p PE,
         content: &'x str,
     ) -> IResult<(), (String, Vec<Rule<PE::P, usize>>), Err>
     where
         PE: PredicateEngine<'p>,
         Err: ParseError<&'x str>,
+        'a: 'p,
+        'p: 'a,
     {
         let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
         let (rest, rules) = separated_list0(multispace1, parse_ipv4_rule(engine, self))(rest)?;
@@ -274,15 +342,18 @@ impl<'a, 'p> FibLoader<'a, 'p, usize> for PortInfoBase {
     }
 }
 
-impl<'a, 'p: 'a> FibLoader<'a, 'p, TypedAction<'a>> for PortInfoBase {
-    fn _load<'x, 's: 'p, PE, Err>(
-        &'s self,
+// implement for PortInfoBase::A (Uncoded Action)
+impl<'a> FibLoader<'a, TypedAction<'a>> for PortInfoBase<'a> {
+    fn _load<'x, 'p, PE, Err>(
+        &'a self,
         engine: &'p PE,
         content: &'x str,
     ) -> IResult<(), (String, Vec<Rule<PE::P, TypedAction<'a>>>), Err>
     where
         PE: PredicateEngine<'p>,
         Err: ParseError<&'x str>,
+        'a: 'p,
+        'p: 'a,
     {
         let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
         let (rest, rules) =
@@ -295,7 +366,7 @@ impl<'a, 'p: 'a> FibLoader<'a, 'p, TypedAction<'a>> for PortInfoBase {
 /// Returns a closure that parses an IPv4 rule and returns a [Rule] instance.
 /// The closure have the lifetime of MatchEncoder's 'p and ActionEncoder's 'a,
 /// where 'a == 'p.
-fn parse_ipv4_rule<'x, 'a: 'p, 'p: 'a, PE, AE, E>(
+fn parse_ipv4_rule<'x, 'a, 'p, PE, AE, E>(
     engine: &'p PE,
     action_encoder: &'a AE,
 ) -> impl Fn(&'x str) -> IResult<&'x str, Rule<PE::P, AE::A>, E> + 'p + 'a
@@ -303,6 +374,8 @@ where
     PE: PredicateEngine<'p>,
     AE: ActionEncoder<'a>,
     E: ParseError<&'x str>,
+    'a: 'p,
+    'p: 'a,
 {
     move |input| {
         let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = tuple((
@@ -400,35 +473,35 @@ mod tests {
 
         let nbrs = &base.nbrs;
         let n1 = nbrs.get("ge0").unwrap();
-        assert_eq!(n1.name, "dev1");
+        assert_eq!(n1.neighbor, "dev1");
         assert!(!n1.external);
         let n2 = nbrs.get("ge1").unwrap();
-        assert_eq!(n2.name, "dev2");
+        assert_eq!(n2.neighbor, "dev2");
         assert!(!n2.external);
 
         let ports = &base.ports;
 
-        let (_, p0) = ports.get_index(0).unwrap();
+        let p0 = ports.get_index(0).unwrap();
         assert_eq!(p0.name, "self");
         assert_eq!(p0.mode, ActionType::DROP);
         assert_eq!(p0.p_ports.len(), 0);
-        let (_, p1) = ports.get_index(1).unwrap();
+        let p1 = ports.get_index(1).unwrap();
         assert_eq!(p1.name, "ge0");
         assert_eq!(p1.mode, ActionType::FORWARD);
         assert_eq!(p1.p_ports.len(), 1);
         assert_eq!(p1.p_ports[0], "ge0");
-        let (_, p2) = ports.get_index(2).unwrap();
+        let p2 = ports.get_index(2).unwrap();
         assert_eq!(p2.name, "ge1");
         assert_eq!(p2.mode, ActionType::FORWARD);
         assert_eq!(p2.p_ports.len(), 1);
         assert_eq!(p2.p_ports[0], "ge1");
-        let (_, p3) = ports.get_index(3).unwrap();
+        let p3 = ports.get_index(3).unwrap();
         assert_eq!(p3.name, "gi0");
         assert_eq!(p3.mode, ActionType::ECMP);
         assert_eq!(p3.p_ports.len(), 2);
         assert_eq!(p3.p_ports[0], "ge0");
         assert_eq!(p3.p_ports[1], "ge1");
-        let (_, p4) = ports.get_index(4).unwrap();
+        let p4 = ports.get_index(4).unwrap();
         assert_eq!(p4.name, "gi1");
         assert_eq!(p4.mode, ActionType::FLOOD);
         assert_eq!(p4.p_ports.len(), 2);
@@ -442,6 +515,7 @@ mod tests {
         "#;
         let engine = RuddyPredicateEngine::init(1000, 100, Inet4Family);
         let (dev, rules) = FibLoader::<usize>::load(&base, &engine, fib).unwrap();
+        let rules: Vec<_> = rules.into_iter().collect();
         assert_eq!(dev, "dev0");
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
@@ -451,6 +525,7 @@ mod tests {
         assert_eq!(rules[1].priority, 0);
         assert_eq!(rules[1].action, 2);
         let (dev, rules) = FibLoader::<TypedAction>::load(&base, &engine, fib).unwrap();
+        let rules: Vec<_> = rules.into_iter().collect();
         assert_eq!(dev, "dev0");
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");

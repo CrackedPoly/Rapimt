@@ -9,7 +9,7 @@ use nom::{
 };
 
 use rapimt_core::{
-    action::{Action, ActionEncoder, CodedAction, Single, UncodedAction},
+    action::{Action, ActionEncoder, Single},
     r#match::{PredicateEngine, Rule},
 };
 
@@ -19,12 +19,7 @@ pub use default::{DefaultInstLoader, PortInfoBase, TypedAction};
 /// according to some format.
 ///
 /// ***The trait and the format are manufacture-specific.***
-pub trait InstanceLoader<'a, AE, UA, A>
-where
-    AE: ActionEncoder<'a>,
-    UA: UncodedAction,
-    A: CodedAction,
-{
+pub trait InstanceLoader<'a, AE: ActionEncoder<'a>> {
     // Required method
     fn _load<'x, Err: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), AE, Err>;
 
@@ -43,28 +38,35 @@ where
 ///
 /// ***The trait and the format are manufacture-specific.***
 #[allow(clippy::type_complexity)]
-pub trait FibLoader<'a, 'p, A>
+pub trait FibLoader<'a, A>: ActionEncoder<'a>
 where
     A: Action<Single>,
 {
     // Required method
-    fn _load<'x, 's: 'p, PE, Err>(
-        &'s self,
+    fn _load<'x, 'p, PE, Err>(
+        &'a self,
         engine: &'p PE,
         content: &'x str,
     ) -> IResult<(), (String, Vec<Rule<PE::P, A>>), Err>
     where
         PE: PredicateEngine<'p>,
-        Err: ParseError<&'x str>;
+        Err: ParseError<&'x str>,
+        'a: 'p,
+        'p: 'a;
 
     // Provided method
-    fn load<'x, 's: 'p, PE>(
-        &'s self,
+
+    /// load fib rules from string content. Since Rule is a combination of action as A and predicate as Predicate<PE::P>,
+    /// the lifetime of A ('a) should equals to the lifetime of P ('p)
+    fn load<'x, 'p, PE>(
+        &'a self,
         engine: &'p PE,
         content: &'x str,
     ) -> Result<(String, Vec<Rule<PE::P, A>>), Error<&'x str>>
     where
         PE: PredicateEngine<'p>,
+        'a: 'p,
+        'p: 'a,
     {
         let res = self._load(engine, content).finish();
         match res {
