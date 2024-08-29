@@ -104,7 +104,7 @@ where
                     let axy = ex.0.overwritten(&ey.0);
                     result
                         .entry(axy)
-                        .and_modify(|p0| *p0 |= &pxy)
+                        .and_modify(|mut p0| p0 |= &pxy)
                         .or_insert(pxy.clone());
                     px -= &pxy;
                     py -= &pxy;

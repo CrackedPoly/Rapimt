@@ -137,7 +137,7 @@ where
             if !eff.is_empty() {
                 self.local_ap
                     .entry(r.action.clone())
-                    .and_modify(|p| *p |= &eff)
+                    .and_modify(|mut p| p |= &eff)
                     .or_insert(eff.clone());
                 no_overwrite -= &eff;
             }
@@ -160,7 +160,7 @@ where
                     if !eff.is_empty() {
                         self.local_ap
                             .entry(y.action.clone())
-                            .and_modify(|p| *p |= &eff)
+                            .and_modify(|mut p| p |= &eff)
                             .or_insert(eff.clone());
                         no_overwrite -= &eff;
                         to_divide -= &eff;

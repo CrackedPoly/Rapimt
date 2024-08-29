@@ -90,7 +90,7 @@ pub struct TypedActionInner<'a> {
     origin: &'a PortInfoBase<'a>,
 }
 
-// For TypedAction::Default to implement get_next_hops() in UncodedActionk
+// For TypedAction::Default to implement get_next_hops()
 static EMPTY_NEIGHBOR: Vec<&'static str> = vec![];
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]

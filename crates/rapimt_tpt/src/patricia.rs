@@ -523,7 +523,7 @@ where
             None
         };
         if let Some(graph_str) = graph_str {
-            let g = parse(&graph_str).unwrap();
+            let g = parse(&graph_str).expect("Wrong graphviz format");
             let _ = exec(
                 g,
                 &mut PrinterContext::default(),

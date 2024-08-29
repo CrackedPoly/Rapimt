@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 bitvec = "1"
-RuDDy = { git = "https://github.com/CrackedPoly/RuDDy.git", version = "0.2.0", features = [
+RuDDy = { git = "https://github.com/CrackedPoly/RuDDy.git", features = [
   "default",
 ] }
-

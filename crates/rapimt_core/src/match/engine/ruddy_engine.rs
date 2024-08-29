@@ -59,7 +59,7 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
     type P = RuddyPredicate<'a>;
 
     #[inline]
-    fn gc(&self) -> Option<usize> {
+    fn gc(&self) -> usize {
         self.manager.borrow_mut().gc()
     }
 
@@ -118,7 +118,7 @@ impl<'a> PredicateEngine<'a> for RuddyPredicateEngine {
         }
     }
 
-    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Option<usize> {
+    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> usize {
         self.manager.borrow_mut().write_buffer(&pred.0.bdd, buffer)
     }
 }
@@ -346,7 +346,7 @@ mod tests {
 
         engine.gc();
         p0 |= p1;
-        let freed = engine.gc().unwrap();
+        let freed = engine.gc();
         // p1 is mutated to -1------..., aka the 2nd positive variable, so both
         // "64.0.0.0/2" and "192.0.0.0/2" are freed
         assert_eq!(freed, 2);

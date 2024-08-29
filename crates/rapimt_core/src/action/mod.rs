@@ -8,8 +8,9 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum ActionType {
+    #[default]
     DROP = 0,
     FORWARD = 1,
     FLOOD = 2,

@@ -122,7 +122,7 @@ impl From<(u64, u64)> for MaskedValue {
 
 /// Inner representation of a predicate should implement Copy (most important) to evade high cost.
 pub trait PredicateInner:
-    Copy + Eq + PartialEq + Ord + PartialOrd + Hash + Display + Debug
+    Copy + Clone + Eq + PartialEq + Ord + PartialOrd + Hash + Display + Debug
 {
     fn not(&self) -> Self;
     fn and(&self, rhs: &Self) -> Self;
@@ -335,33 +335,54 @@ macro_rules! predicate_sub_assign_impl {
 
 predicate_bitand_impl!(Predicate<P>, Predicate<P>);
 predicate_bitand_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitand_impl!(Predicate<P>, &mut Predicate<P>);
 predicate_bitand_impl!(&Predicate<P>, Predicate<P>);
 predicate_bitand_impl!(&Predicate<P>, &Predicate<P>);
+predicate_bitand_impl!(&Predicate<P>, &mut Predicate<P>);
+predicate_bitand_impl!(&mut Predicate<P>, Predicate<P>);
+predicate_bitand_impl!(&mut Predicate<P>, &Predicate<P>);
+predicate_bitand_impl!(&mut Predicate<P>, &mut Predicate<P>);
 
 predicate_bitand_assign_impl!(Predicate<P>, Predicate<P>);
 predicate_bitand_assign_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitand_assign_impl!(Predicate<P>, &mut Predicate<P>);
 predicate_bitand_assign_impl!(&mut Predicate<P>, Predicate<P>);
 predicate_bitand_assign_impl!(&mut Predicate<P>, &Predicate<P>);
+predicate_bitand_assign_impl!(&mut Predicate<P>, &mut Predicate<P>);
 
 predicate_bitor_impl!(Predicate<P>, Predicate<P>);
 predicate_bitor_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitor_impl!(Predicate<P>, &mut Predicate<P>);
 predicate_bitor_impl!(&Predicate<P>, Predicate<P>);
 predicate_bitor_impl!(&Predicate<P>, &Predicate<P>);
+predicate_bitor_impl!(&Predicate<P>, &mut Predicate<P>);
+predicate_bitor_impl!(&mut Predicate<P>, Predicate<P>);
+predicate_bitor_impl!(&mut Predicate<P>, &Predicate<P>);
+predicate_bitor_impl!(&mut Predicate<P>, &mut Predicate<P>);
 
 predicate_bitor_assign_impl!(Predicate<P>, Predicate<P>);
 predicate_bitor_assign_impl!(Predicate<P>, &Predicate<P>);
+predicate_bitor_assign_impl!(Predicate<P>, &mut Predicate<P>);
 predicate_bitor_assign_impl!(&mut Predicate<P>, Predicate<P>);
 predicate_bitor_assign_impl!(&mut Predicate<P>, &Predicate<P>);
+predicate_bitor_assign_impl!(&mut Predicate<P>, &mut Predicate<P>);
 
 predicate_sub_impl!(Predicate<P>, Predicate<P>);
 predicate_sub_impl!(Predicate<P>, &Predicate<P>);
+predicate_sub_impl!(Predicate<P>, &mut Predicate<P>);
 predicate_sub_impl!(&Predicate<P>, Predicate<P>);
 predicate_sub_impl!(&Predicate<P>, &Predicate<P>);
+predicate_sub_impl!(&Predicate<P>, &mut Predicate<P>);
+predicate_sub_impl!(&mut Predicate<P>, Predicate<P>);
+predicate_sub_impl!(&mut Predicate<P>, &Predicate<P>);
+predicate_sub_impl!(&mut Predicate<P>, &mut Predicate<P>);
 
 predicate_sub_assign_impl!(Predicate<P>, Predicate<P>);
 predicate_sub_assign_impl!(Predicate<P>, &Predicate<P>);
+predicate_sub_assign_impl!(Predicate<P>, &mut Predicate<P>);
 predicate_sub_assign_impl!(&mut Predicate<P>, Predicate<P>);
 predicate_sub_assign_impl!(&mut Predicate<P>, &Predicate<P>);
+predicate_sub_assign_impl!(&mut Predicate<P>, &mut Predicate<P>);
 
 /// MatchEncoder parses field values and encodes them into predicates.
 pub trait MatchEncoder<'a>
@@ -369,7 +390,7 @@ where
     Self: 'a,
 {
     type P: PredicateInner + 'a;
-    fn gc(&self) -> Option<usize>;
+    fn gc(&self) -> usize;
     fn one(&'a self) -> Predicate<Self::P>;
     fn zero(&'a self) -> Predicate<Self::P>;
     fn family(&self) -> &MatchFamily;
@@ -456,7 +477,7 @@ pub trait PredicateEngine<'a>: MatchEncoder<'a> {
     /// Deserialize a predicate according to the buffer.
     fn read_buffer(&'a self, buffer: &[u8]) -> Option<Predicate<Self::P>>;
     /// Serialize the predicate to the buffer.
-    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Option<usize>;
+    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> usize;
 }
 
 /// Rule is a local-representation of a flow entry.
