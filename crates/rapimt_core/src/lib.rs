@@ -13,7 +13,7 @@ pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
         action::{
-            seq_action, ActionEncoder, ActionType, CodedAction, CodedActions, ModelType, Multiple,
+            seq_action, ActionEncoder, ActionType, CodedAction, CodedActions, Dimension, Multiple,
             Single, UncodedAction,
         },
         r#match::{

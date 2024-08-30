@@ -14,6 +14,32 @@ pub struct SeqActions<A: CodedAction, const N: usize>(Vec<A>);
 
 impl<A: CodedAction, const N: usize> Action<Multiple> for SeqActions<A, N> {
     type S = A;
+
+    fn drop_action() -> Self {
+        let mut v = Vec::with_capacity(N);
+        v.push(A::drop_action());
+        SeqActions(v)
+    }
+
+    fn no_overwrite() -> Self {
+        let mut v = Vec::with_capacity(N);
+        v.push(A::no_overwrite());
+        SeqActions(v)
+    }
+
+    fn overwritten(&self, rhs: &Self) -> Self {
+        debug_assert_eq!(self.0.len(), rhs.0.len());
+        let n_dim = self.0.len();
+        let mut new_actions = Vec::with_capacity(self.0.capacity());
+        for i in 0..n_dim {
+            if rhs[i] != A::default() {
+                new_actions.push(rhs[i]);
+            } else {
+                new_actions.push(self[i]);
+            }
+        }
+        SeqActions(new_actions)
+    }
 }
 
 impl<A: CodedAction, const N: usize> From<A> for SeqActions<A, N> {
@@ -62,20 +88,6 @@ impl<A: CodedAction, const N: usize> CodedActions for SeqActions<A, N> {
             self.0.copy_within(0..n_dim, offset);
             self.0[..offset].fill(A::default());
         }
-    }
-
-    fn overwritten(&self, rhs: &Self) -> Self {
-        debug_assert_eq!(self.0.len(), rhs.0.len());
-        let n_dim = self.0.len();
-        let mut new_actions = Vec::with_capacity(self.0.capacity());
-        for i in 0..n_dim {
-            if rhs[i] != A::default() {
-                new_actions.push(rhs[i]);
-            } else {
-                new_actions.push(self[i]);
-            }
-        }
-        SeqActions(new_actions)
     }
 
     fn diff(&self, rhs: &Self) -> usize {

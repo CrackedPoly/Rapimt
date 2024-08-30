@@ -6,6 +6,7 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
     ops::{Index, IndexMut},
+    rc::Rc,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
@@ -31,9 +32,9 @@ impl From<i32> for ActionType {
     }
 }
 
-/// ModelType is a empty trait that represents the type of action. Now, we have two types of
+/// Dimension is a empty trait that represents the type of action. Now, we have two types of
 /// actions: [Single] and [Multiple].
-pub trait ModelType {}
+pub trait Dimension {}
 
 /// Single means the action is one-dimensional, it can only contain an action of a single device.
 pub struct Single {}
@@ -42,14 +43,18 @@ pub struct Single {}
 /// devices.
 pub struct Multiple {}
 
-impl ModelType for Multiple {}
+impl Dimension for Multiple {}
 
-impl ModelType for Single {}
+impl Dimension for Single {}
 
-pub trait Action<T: ModelType>: Eq + Hash + Clone + Debug + Default {
+pub trait Action<T: Dimension>: From<Self::S> + Eq + Hash + Clone + Debug {
     // What single form of action it contains. For structs that implements Action<Single>, it must
     // be itself, while for Action<Multiple> structs, it should define one.
     type S: Action<Single>;
+
+    fn drop_action() -> Self;
+    fn no_overwrite() -> Self;
+    fn overwritten(&self, rhs: &Self) -> Self;
 }
 
 /// UncodedAction is an action on a specific device, it should have rich information such as device
@@ -59,7 +64,7 @@ pub trait Action<T: ModelType>: Eq + Hash + Clone + Debug + Default {
 /// ***This trait is manufacture-specific.***
 pub trait UncodedAction: Action<Single> + Clone {
     fn get_type(&self) -> ActionType;
-    fn get_next_hops(&self) -> impl IntoIterator<Item = impl AsRef<str>>;
+    fn get_next_hops(&self) -> Option<impl IntoIterator<Item = &Rc<str>>>;
 }
 
 /// CodedAction should have fixed size and can live in stack to achieve better performance.
@@ -83,22 +88,27 @@ pub trait CodedAction:
 {
 }
 
-macro_rules! impl_action {
-    ($($t:ty),*) => {
-        $(
-            impl Action<Single> for $t {
-                type S = $t;
-            }
-            impl CodedAction for $t {}
-        )*
-    };
-}
-
-impl_action!(u16, u32, u64, usize, i16, i32, i64, isize);
-
-impl Action<Single> for String {
+impl Action<Single> for usize {
     type S = Self;
+
+    fn drop_action() -> Self {
+        1
+    }
+
+    fn no_overwrite() -> Self {
+        0
+    }
+
+    fn overwritten(&self, rhs: &Self) -> Self {
+        if *rhs == 0 {
+            *self
+        } else {
+            *rhs
+        }
+    }
 }
+
+impl CodedAction for usize {}
 
 /// ActionEncoder is essentially an instance that has all information about this device's topology
 /// (name, ports, port mode, neighbors), it can encode/decode raw action into/from CodedAction
@@ -118,7 +128,6 @@ where
 
 pub trait CodedActions:
     Action<Multiple>
-    + From<<Self as Action<Multiple>>::S>
     + Index<usize, Output = <Self as Action<Multiple>>::S>
     + IndexMut<usize, Output = <Self as Action<Multiple>>::S>
     + Clone
@@ -132,7 +141,6 @@ pub trait CodedActions:
     // Required methods
     fn len(&self) -> usize;
     fn resize(&mut self, to: usize, offset: usize);
-    fn overwritten(&self, rhs: &Self) -> Self;
     fn diff(&self, rhs: &Self) -> usize;
 
     // Provided methods

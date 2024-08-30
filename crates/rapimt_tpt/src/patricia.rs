@@ -1,15 +1,17 @@
 use std::{
     borrow::Borrow,
     cell::RefCell,
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     fmt::{Binary, Debug},
-    hash::Hash,
+    hash::{Hash, RandomState},
     iter::Extend,
+    ops::BitOr,
     rc::Rc,
 };
 
 use crate::segment::{Segment, Segmentized};
 
+use fxhash::FxHashSet;
 #[cfg(feature = "graphviz")]
 use graphviz_rust::{
     cmd::{CommandArg, Format},
@@ -19,39 +21,122 @@ use graphviz_rust::{
 #[cfg(feature = "graphviz")]
 use std::fmt::Display;
 
-#[allow(dead_code)]
-trait Handle {}
+pub trait Value: Ord + Eq + Hash + Clone {}
 
-impl<V> Handle for HashSet<V> {}
+impl Value for &str {}
 
-struct TreeNode<V> {
-    cond: Segment,
-    depth: usize,
-    values: HashSet<V>,
-    subsets: HashSet<V>,
-    lch: Option<TreeNodeRef<V>>,
-    rch: Option<TreeNodeRef<V>>,
-    wch: Option<TreeNodeRef<V>>,
+impl<T: Ord + Hash + Debug> Value for Rc<T> {}
+
+pub trait Handle<V: Value>: Default + Clone + Extend<V> + IntoIterator<Item = V> {
+    fn is_empty(&self) -> bool;
+
+    fn new(value: V) -> Self {
+        let mut h = Self::default();
+        h.extend(Some(value));
+        h
+    }
+
+    fn remove(&mut self, value: &V) -> bool;
+
+    fn insert(&mut self, value: V) -> bool;
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a V>
+    where
+        V: 'a;
 }
 
-type TreeNodeRef<V> = Rc<RefCell<TreeNode<V>>>;
+impl<V: Value> Handle<V> for FxHashSet<V> {
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn remove(&mut self, value: &V) -> bool {
+        self.remove(value)
+    }
+
+    fn insert(&mut self, value: V) -> bool {
+        self.insert(value)
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a V>
+    where
+        V: 'a,
+    {
+        self.iter()
+    }
+}
+
+impl<V: Value> Handle<V> for HashSet<V, RandomState> {
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn remove(&mut self, value: &V) -> bool {
+        self.remove(value)
+    }
+
+    fn insert(&mut self, value: V) -> bool {
+        self.insert(value)
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a V>
+    where
+        V: 'a,
+    {
+        self.iter()
+    }
+}
+
+impl<V: Value> Handle<V> for BTreeSet<V> {
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn remove(&mut self, value: &V) -> bool {
+        self.remove(value)
+    }
+
+    fn insert(&mut self, value: V) -> bool {
+        self.insert(value)
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a V>
+    where
+        V: 'a,
+    {
+        self.iter()
+    }
+}
+
+struct TreeNode<V: Value, H: Handle<V>> {
+    cond: Segment,
+    depth: usize,
+    values: H,
+    subsets: H,
+    lch: Option<TreeNodeRef<V, H>>,
+    rch: Option<TreeNodeRef<V, H>>,
+    wch: Option<TreeNodeRef<V, H>>,
+}
+
+type TreeNodeRef<V, H> = Rc<RefCell<TreeNode<V, H>>>;
 
 // this is a helper trait for bypassing the external struct constraint
-trait TNode<V> {
+trait TNode<V: Value, H: Handle<V>> {
     fn recursive_dump(&self, depth: usize);
     fn new(
         cond: Segment,
         depth: usize,
-        value: HashSet<V>,
-        lch: Option<TreeNodeRef<V>>,
-        rch: Option<TreeNodeRef<V>>,
-        wch: Option<TreeNodeRef<V>>,
+        value: H,
+        lch: Option<TreeNodeRef<V, H>>,
+        rch: Option<TreeNodeRef<V, H>>,
+        wch: Option<TreeNodeRef<V, H>>,
     ) -> Self;
 }
 
-impl<V> TNode<V> for TreeNodeRef<V>
+impl<V, H> TNode<V, H> for TreeNodeRef<V, H>
 where
-    V: Eq + Hash + Clone + Debug,
+    V: Value + Debug,
+    H: Handle<V> + Debug,
 {
     fn recursive_dump(&self, depth: usize) {
         let cond_str = format!("{}{:b}", "-".repeat(depth), self.as_ref().borrow().cond);
@@ -80,16 +165,16 @@ where
     fn new(
         cond: Segment,
         depth: usize,
-        value: HashSet<V>,
-        lch: Option<TreeNodeRef<V>>,
-        rch: Option<TreeNodeRef<V>>,
-        wch: Option<TreeNodeRef<V>>,
+        value: H,
+        lch: Option<TreeNodeRef<V, H>>,
+        rch: Option<TreeNodeRef<V, H>>,
+        wch: Option<TreeNodeRef<V, H>>,
     ) -> Self {
         let mut node = TreeNode {
             cond,
             depth,
             values: value,
-            subsets: HashSet::new(),
+            subsets: H::default(),
             lch,
             rch,
             wch,
@@ -108,14 +193,16 @@ where
     }
 }
 
-pub struct TernaryPatriciaTree<V> {
-    root: Option<TreeNodeRef<V>>,
+pub struct TernaryPatriciaTree<V: Value, H: Handle<V>> {
+    root: Option<TreeNodeRef<V, H>>,
     max_depth: usize,
 }
 
-impl<V> TernaryPatriciaTree<V>
+impl<V, H> TernaryPatriciaTree<V, H>
 where
-    V: Eq + Hash + Clone + Debug,
+    V: Value + Debug,
+    H: Handle<V> + Debug,
+    for<'a> &'a H: BitOr<Output = H>,
 {
     #[inline]
     pub fn new(max_depth: usize) -> Self {
@@ -131,21 +218,21 @@ where
     }
 
     #[inline]
-    pub fn all(&self) -> HashSet<V> {
+    pub fn all(&self) -> H {
         if let Some(node) = &self.root {
             node.as_ref().borrow().subsets.clone()
         } else {
-            HashSet::new()
+            H::default()
         }
     }
 
     fn insert_rec<S>(
         &self,
-        node_ref: Option<TreeNodeRef<V>>,
+        node_ref: Option<TreeNodeRef<V, H>>,
         value: V,
         segmentized: &mut S,
         depth: usize,
-    ) -> Option<TreeNodeRef<V>>
+    ) -> Option<TreeNodeRef<V, H>>
     where
         S: Segmentized<V>,
     {
@@ -157,10 +244,10 @@ where
             while segmentized.has_next() {
                 segmentized.proceed(1);
             }
-            return Some(<TreeNodeRef<V> as TNode<V>>::new(
+            return Some(<TreeNodeRef<V, H> as TNode<V, H>>::new(
                 segmentized.current(),
                 depth,
-                HashSet::from([value.clone()]),
+                H::new(value.clone()),
                 None,
                 None,
                 None,
@@ -226,17 +313,12 @@ where
         self.root = self.insert_rec(self.root.clone(), value, &mut segmentized, 0)
     }
 
-    fn search_rec<S>(
-        &self,
-        node_ref: Option<TreeNodeRef<V>>,
-        value: V,
-        segmentized: &mut S,
-    ) -> HashSet<V>
+    fn search_rec<S>(&self, node_ref: Option<TreeNodeRef<V, H>>, _value: &V, segmentized: &mut S) -> H
     where
         S: Segmentized<V> + Binary,
     {
         if node_ref.is_none() {
-            return HashSet::new();
+            return H::default();
         }
         let node = node_ref.unwrap();
         let cond = node.as_ref().borrow().cond;
@@ -252,33 +334,33 @@ where
             let wset = if let Some(mut wseger) = wseger {
                 self.search_rec(
                     node.as_ref().borrow().wch.clone(),
-                    value.clone(),
+                    _value,
                     &mut wseger,
                 )
             } else {
-                HashSet::new()
+                H::default()
             };
 
             let lseger = segmentized.assert_next(false, true);
             let lset = if let Some(mut lseger) = lseger {
                 self.search_rec(
                     node.as_ref().borrow().lch.clone(),
-                    value.clone(),
+                    _value,
                     &mut lseger,
                 )
             } else {
-                HashSet::new()
+                H::default()
             };
 
             let rseger = segmentized.assert_next(true, true);
             let rset = if let Some(mut rseger) = rseger {
                 self.search_rec(
                     node.as_ref().borrow().rch.clone(),
-                    value.clone(),
+                    _value,
                     &mut rseger,
                 )
             } else {
-                HashSet::new()
+                H::default()
             };
 
             match segmentized.next_pair() {
@@ -287,12 +369,12 @@ where
                 _ => &(&wset | &rset) | nset,
             }
         } else {
-            HashSet::new()
+            H::default()
         }
     }
 
     #[inline]
-    pub fn search<S>(&self, value: V, mut segmentized: S) -> HashSet<V>
+    pub fn search<S>(&self, value: &V, mut segmentized: S) -> H
     where
         S: Segmentized<V> + Binary,
     {
@@ -301,10 +383,10 @@ where
 
     fn delete_rec<S>(
         &self,
-        node_ref: Option<TreeNodeRef<V>>,
-        value: V,
+        node_ref: Option<TreeNodeRef<V, H>>,
+        value: &V,
         segmentized: &mut S,
-    ) -> Option<TreeNodeRef<V>>
+    ) -> Option<TreeNodeRef<V, H>>
     where
         S: Segmentized<V>,
     {
@@ -317,9 +399,9 @@ where
             // the structure is not right, so the value is not in the tree
             return Some(node);
         }
-        node.as_ref().borrow_mut().subsets.remove(&value);
+        node.as_ref().borrow_mut().subsets.remove(value);
         if !segmentized.has_next() || self.node_is_last(&node) {
-            node.as_ref().borrow_mut().values.remove(&value);
+            node.as_ref().borrow_mut().values.remove(value);
         }
         let wseg = segmentized.assert_next(false, false);
         let lseg = segmentized.assert_next(false, true);
@@ -327,25 +409,25 @@ where
         {
             let mut r_mut = node.as_ref().borrow_mut();
             if let Some(mut wseg) = wseg {
-                r_mut.wch = self.delete_rec(r_mut.borrow().wch.clone(), value.clone(), &mut wseg);
+                r_mut.wch = self.delete_rec(r_mut.borrow().wch.clone(), value, &mut wseg);
             } else if let Some(mut lseg) = lseg {
-                r_mut.lch = self.delete_rec(r_mut.borrow().lch.clone(), value.clone(), &mut lseg)
+                r_mut.lch = self.delete_rec(r_mut.borrow().lch.clone(), value, &mut lseg)
             } else if let Some(mut rseg) = rseg {
-                r_mut.rch = self.delete_rec(r_mut.borrow().rch.clone(), value.clone(), &mut rseg)
+                r_mut.rch = self.delete_rec(r_mut.borrow().rch.clone(), value, &mut rseg)
             }
         }
         self.compact_node(node)
     }
 
     #[inline]
-    pub fn delete<S>(&mut self, value: V, mut segmentized: S)
+    pub fn delete<S>(&mut self, value: &V, mut segmentized: S)
     where
         S: Segmentized<V>,
     {
         self.root = self.delete_rec(self.root.clone(), value, &mut segmentized)
     }
 
-    fn split_node(&self, node: TreeNodeRef<V>, segment: Segment) -> TreeNodeRef<V> {
+    fn split_node(&self, node: TreeNodeRef<V, H>, segment: Segment) -> TreeNodeRef<V, H> {
         // we should create a new node that points to the node
         let offset = segment.len;
         let depth = node.as_ref().borrow().depth;
@@ -354,26 +436,26 @@ where
         node.as_ref().borrow_mut().cond.shift_left(offset);
         let seg = node.as_ref().borrow().cond;
         match (seg.mv.value[0], seg.mv.mask[0]) {
-            (false, false) => <TreeNodeRef<V> as TNode<V>>::new(
+            (false, false) => <TreeNodeRef<V, H> as TNode<V, H>>::new(
                 segment,
                 depth,
-                HashSet::new(),
+                H::default(),
                 None,
                 None,
                 Some(node),
             ),
-            (false, true) => <TreeNodeRef<V> as TNode<V>>::new(
+            (false, true) => <TreeNodeRef<V, H> as TNode<V, H>>::new(
                 segment,
                 depth,
-                HashSet::new(),
+                H::default(),
                 Some(node),
                 None,
                 None,
             ),
-            _ => <TreeNodeRef<V> as TNode<V>>::new(
+            _ => <TreeNodeRef<V, H> as TNode<V, H>>::new(
                 segment,
                 depth,
-                HashSet::new(),
+                H::default(),
                 None,
                 Some(node),
                 None,
@@ -381,7 +463,7 @@ where
         }
     }
 
-    fn compact_node(&self, node: TreeNodeRef<V>) -> Option<TreeNodeRef<V>> {
+    fn compact_node(&self, node: TreeNodeRef<V, H>) -> Option<TreeNodeRef<V, H>> {
         let n_ref = node.as_ref().borrow();
         if n_ref.subsets.is_empty() {
             None
@@ -409,13 +491,13 @@ where
     }
 
     #[inline]
-    fn node_is_leaf(&self, node: &TreeNodeRef<V>) -> bool {
+    fn node_is_leaf(&self, node: &TreeNodeRef<V, H>) -> bool {
         let r = node.as_ref().borrow();
         r.lch.is_none() && r.rch.is_none() && r.wch.is_none()
     }
 
     #[inline]
-    fn node_is_last(&self, node: &TreeNodeRef<V>) -> bool {
+    fn node_is_last(&self, node: &TreeNodeRef<V, H>) -> bool {
         let r = node.as_ref().borrow();
         r.depth + r.cond.len >= self.max_depth
     }
@@ -436,13 +518,14 @@ pub trait GraphvizDebug {
 }
 
 #[cfg(feature = "graphviz")]
-impl<V> GraphvizDebug for TernaryPatriciaTree<V>
+impl<V, H> GraphvizDebug for TernaryPatriciaTree<V, H>
 where
-    V: Display,
+    V: Value + Display,
+    H: Handle<V>,
 {
     fn visualize(&self, filename: &str) {
-        fn inner_rec<V: Display>(
-            node_ref: TreeNodeRef<V>,
+        fn inner_rec<U: Value + Display, G: Handle<U>>(
+            node_ref: TreeNodeRef<U, G>,
             depth: usize,
         ) -> Option<(String, String)> {
             let node = node_ref.as_ref().borrow();
@@ -543,7 +626,7 @@ mod tests {
 
     #[test]
     fn test_tpt_insert_search() {
-        let mut tpt = TernaryPatriciaTree::<&str> {
+        let mut tpt = TernaryPatriciaTree::<&str, HashSet<&str>> {
             root: None,
             max_depth: 32,
         };
@@ -557,22 +640,22 @@ mod tests {
         tpt.insert(str0, segmentizer(str0));
         tpt.insert(str1, segmentizer(str1));
         assert_eq!(
-            tpt.search(str2, segmentizer(str2)),
+            tpt.search(&str2, segmentizer(str2)),
             HashSet::from(["**", "*****"])
         );
         tpt.insert(str2, segmentizer(str2));
         assert_eq!(
-            tpt.search(str3, segmentizer(str3)),
+            tpt.search(&str3, segmentizer(str3)),
             HashSet::from(["**", "*****", "0*1**"])
         );
         tpt.insert(str3, segmentizer(str3));
         assert_eq!(
-            tpt.search(str4, segmentizer(str4)),
+            tpt.search(&str4, segmentizer(str4)),
             HashSet::from(["**", "*****", "0*1**", "***1*"])
         );
         tpt.insert(str4, segmentizer(str4));
         assert_eq!(
-            tpt.search(str5, segmentizer(str5)),
+            tpt.search(&str5, segmentizer(str5)),
             HashSet::from(["**", "*****"])
         );
         #[cfg(feature = "graphviz")]
@@ -581,7 +664,7 @@ mod tests {
 
     #[test]
     fn test_tpt_delete() {
-        let mut tpt = TernaryPatriciaTree::<&str> {
+        let mut tpt = TernaryPatriciaTree::<&str, FxHashSet<&str>> {
             root: None,
             max_depth: 32,
         };
@@ -599,15 +682,15 @@ mod tests {
         #[cfg(feature = "graphviz")]
         tpt.visualize("debug/test_tpt_delete0.pdf");
 
-        tpt.delete(str4, segmentizer(str4));
+        tpt.delete(&str4, segmentizer(str4));
         #[cfg(feature = "graphviz")]
         tpt.visualize("debug/test_tpt_delete1.pdf");
 
-        tpt.delete(str0, segmentizer(str0));
+        tpt.delete(&str0, segmentizer(str0));
         #[cfg(feature = "graphviz")]
         tpt.visualize("debug/test_tpt_delete2.pdf");
 
-        let remains = tpt.search("*", segmentizer("*"));
+        let remains = tpt.search(&"*", segmentizer("*"));
         assert_eq!(remains.len(), 3);
     }
 }

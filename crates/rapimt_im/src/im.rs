@@ -7,12 +7,12 @@ use std::{
 
 use fxhash::FxBuildHasher;
 use rapimt_core::{
-    action::{Action, CodedActions, ModelType, Multiple, Single},
+    action::{Action, CodedActions, Dimension, Multiple, Single},
     r#match::{Predicate, PredicateInner},
 };
 
 #[derive(Debug)]
-pub struct InverseModel<A: Action<T>, P: PredicateInner, T: ModelType> {
+pub struct InverseModel<A: Action<T>, P: PredicateInner, T: Dimension> {
     pub vec: Vec<(A, Predicate<P>)>,
     _marker: PhantomData<T>,
 }
@@ -21,7 +21,7 @@ impl<A, P, T, II> From<II> for InverseModel<A, P, T>
 where
     A: Action<T>,
     P: PredicateInner,
-    T: ModelType,
+    T: Dimension,
     II: IntoIterator<Item = (A, Predicate<P>)>,
 {
     fn from(value: II) -> Self {
@@ -36,7 +36,7 @@ impl<A, P, T> Deref for InverseModel<A, P, T>
 where
     A: Action<T>,
     P: PredicateInner,
-    T: ModelType,
+    T: Dimension,
 {
     type Target = Vec<(A, Predicate<P>)>;
     fn deref(&self) -> &Self::Target {
@@ -48,7 +48,7 @@ impl<A, P, T> DerefMut for InverseModel<A, P, T>
 where
     A: Action<T>,
     P: PredicateInner,
-    T: ModelType,
+    T: Dimension,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.vec
@@ -59,7 +59,7 @@ impl<A, P, T> AsRef<[(A, Predicate<P>)]> for InverseModel<A, P, T>
 where
     A: Action<T>,
     P: PredicateInner,
-    T: ModelType,
+    T: Dimension,
 {
     fn as_ref(&self) -> &[(A, Predicate<P>)] {
         &self.vec
@@ -70,7 +70,7 @@ impl<A, P, T> Default for InverseModel<A, P, T>
 where
     A: Action<T>,
     P: PredicateInner,
-    T: ModelType,
+    T: Dimension,
 {
     fn default() -> Self {
         Self {

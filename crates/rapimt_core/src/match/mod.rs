@@ -498,21 +498,19 @@ pub struct UncodedRule<P: PredicateInner> {
     pub origin: Vec<MaskedValue>,
 }
 
-impl<P: PredicateInner, A: CodedAction> PartialOrd for Rule<P, A> {
+impl<P: PredicateInner, A: Action<Single>> PartialOrd for Rule<P, A> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<P: PredicateInner, A: CodedAction> Ord for Rule<P, A> {
+impl<P: PredicateInner, A: Action<Single>> Ord for Rule<P, A> {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other
-            .priority
-            .cmp(&self.priority)
-            .then_with(|| other.action.cmp(&self.action))
-            .then_with(|| other.predicate.cmp(&self.predicate))
+        self.priority
+            .cmp(&other.priority)
+            .then_with(|| self.predicate.cmp(&other.predicate))
     }
 }
 
