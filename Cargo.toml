@@ -12,6 +12,9 @@ overflow-checks = false
 [workspace]
 members = ["crates/*"]
 
+[workspace.dependencies]
+fxhash = "0.2.1"
+
 [[bin]]
 doc = false
 name = "rimt"
