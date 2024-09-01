@@ -6,7 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bitvec = "1"
-RuDDy = { git = "https://github.com/CrackedPoly/RuDDy.git", features = [
-  "default",
-] }
+bitvec = { workspace = true }
+RuDDy = { workspace = true }

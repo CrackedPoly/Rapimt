@@ -6,12 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+fxhash = { workspace = true }
 rapimt_core = { path = "../rapimt_core" }
 rapimt_io = { path = "../rapimt_io" }
 rapimt_tpt = { path = "../rapimt_tpt" }
-fxhash = "0.2.1"
 
 [[example]]
 name = "stanford"
 path = "examples/stanford/stanford.rs"
-

@@ -14,6 +14,12 @@ members = ["crates/*"]
 
 [workspace.dependencies]
 fxhash = "0.2.1"
+nom = "7"
+indexmap = "2.2.5"
+bitvec = "1"
+RuDDy = { git = "https://github.com/CrackedPoly/RuDDy.git", features = [
+  "default",
+] }
 
 [[bin]]
 doc = false
