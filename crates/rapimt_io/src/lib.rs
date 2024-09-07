@@ -7,7 +7,6 @@ use nom::{
     error::{Error, ParseError},
     {Finish, IResult},
 };
-
 use rapimt_core::{
     action::{Action, ActionEncoder, Single},
     r#match::{PredicateEngine, Rule},

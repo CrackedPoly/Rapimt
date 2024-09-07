@@ -22,7 +22,7 @@ use crate::{im::InverseModel, FibMonitor};
 /// Generic parameters:
 /// - `A`: Action<Single> type, which is used to represent the action of a FIB rule.
 /// - `ME`: MatchEncoder type, which is used provide default "match any packet" predicate for
-/// the default rule..
+///   the default rule..
 pub struct DefaultFibMonitor<'p, A, ME>
 where
     A: Action<Single>,

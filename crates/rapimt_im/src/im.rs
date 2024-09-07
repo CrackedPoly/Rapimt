@@ -80,10 +80,11 @@ where
     }
 }
 
-impl<A, P> ShlAssign for InverseModel<A, P, Multiple>
+impl<A, P, T> ShlAssign for InverseModel<A, P, T>
 where
-    A: CodedActions,
+    A: Action<T>,
     P: PredicateInner,
+    T: Dimension
 {
     fn shl_assign(&mut self, rhs: Self) {
         if self.len() == 0 {

@@ -91,14 +91,17 @@ pub trait CodedAction:
 impl Action<Single> for usize {
     type S = Self;
 
+    #[inline]
     fn drop_action() -> Self {
         1
     }
 
+    #[inline]
     fn no_overwrite() -> Self {
         0
     }
 
+    #[inline]
     fn overwritten(&self, rhs: &Self) -> Self {
         if *rhs == 0 {
             *self
