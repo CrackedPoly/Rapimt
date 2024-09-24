@@ -1,13 +1,101 @@
-use std::{cmp::min, fmt::Binary, ops::Range};
+use std::ops::{BitAnd, BitOr, Index, IndexMut};
+use std::{
+    cmp::{max, min},
+    fmt::Binary,
+    ops::Range,
+};
 
 use bitvec::prelude::*;
 
-use rapimt_core::prelude::*;
-use constant::{HeaderBitOrder, HeaderBitStore, HEADERSTORENUM};
+use rapimt_core::prelude::constant::{HeaderBitOrder, HeaderBitStore, HEADERSTORENUM, MAX_POS};
+use rapimt_core::prelude::MaskedValue;
+
+/// Reversed-Endian BitArray, view entire bitarray as a whole and reverse its endian order.
+/// Use this when HeaderBitOrder is Lsb0, otherwise BitArray will do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ReBitArray(BitArray<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder>);
+
+impl ReBitArray {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn set(&mut self, index: usize, value: bool) {
+        self.0.set(MAX_POS - 1 - index, value);
+    }
+
+    #[inline]
+    pub fn shift_left(&mut self, rhs: usize) {
+        self.0.shift_right(rhs);
+    }
+
+    #[inline]
+    pub fn shift_right(&mut self, rhs: usize) {
+        self.0.shift_left(rhs);
+    }
+}
+
+impl Index<usize> for ReBitArray {
+    type Output =
+        <BitArray<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder> as Index<usize>>::Output;
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[MAX_POS - 1 - index]
+    }
+}
+
+impl Index<Range<usize>> for ReBitArray {
+    type Output =
+        <BitArray<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder> as Index<Range<usize>>>::Output;
+    #[inline]
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        &self.0[MAX_POS - index.end..MAX_POS - index.start]
+    }
+}
+
+impl IndexMut<Range<usize>> for ReBitArray {
+    #[inline]
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        &mut self.0[MAX_POS - index.end..MAX_POS - index.start]
+    }
+}
+
+impl BitOr<ReBitArray> for ReBitArray {
+    type Output = ReBitArray;
+    #[inline]
+    fn bitor(self, rhs: ReBitArray) -> Self::Output {
+        ReBitArray(self.0 | rhs.0)
+    }
+}
+
+impl BitAnd<ReBitArray> for ReBitArray {
+    type Output = ReBitArray;
+    #[inline]
+    fn bitand(self, rhs: ReBitArray) -> Self::Output {
+        ReBitArray(self.0 & rhs.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ReMaskedValue {
+    pub value: ReBitArray,
+    pub mask: ReBitArray,
+}
+
+impl From<MaskedValue> for ReMaskedValue {
+    fn from(mv: MaskedValue) -> Self {
+        ReMaskedValue {
+            value: ReBitArray(mv.value),
+            mask: ReBitArray(mv.mask),
+        }
+    }
+}
 
 #[derive(Debug, Default, Eq, PartialEq, Clone, Copy)]
 pub struct Segment {
-    pub mv: MaskedValue,
+    pub mv: ReMaskedValue,
     pub len: usize,
 }
 
@@ -25,6 +113,26 @@ impl Binary for Segment {
     }
 }
 
+impl From<MaskedValue> for Segment {
+    #[inline]
+    fn from(mv: MaskedValue) -> Self {
+        Segment {
+            mv: ReMaskedValue::from(mv),
+            len: mv.mask.len() - mv.mask.leading_zeros(),
+        }
+    }
+}
+
+impl From<ReMaskedValue> for Segment {
+    #[inline]
+    fn from(rmv: ReMaskedValue) -> Self {
+        Segment {
+            mv: rmv,
+            len: rmv.mask.len() - rmv.mask.0.leading_zeros(),
+        }
+    }
+}
+
 impl Segment {
     /// this is a prefix of rhs
     pub fn is_prefix_of(&self, rhs: Segment) -> bool {
@@ -34,16 +142,16 @@ impl Segment {
             false
         } else {
             // mask equals, check valid value bits
-            let mut bits = BitArray::<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder>::ZERO;
+            let mut bits = ReBitArray::default();
             bits[0..len].copy_from_bitslice(&rhs.mv.value[0..len]);
-            bits[0..len] ^= self.mv.value;
-            bits[0..len] &= self.mv.mask;
+            bits[0..len] ^= &self.mv.value[0..len];
+            bits[0..len] &= &self.mv.mask[0..len];
             bits[0..len].not_any()
         }
     }
 
     pub fn is_superset_of(&self, rhs: Segment) -> bool {
-        let mut bits = BitArray::<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder>::ZERO;
+        let mut bits = ReBitArray::default();
         let len = self.len;
         let rhs_len = rhs.len;
         bits[0..len].copy_from_bitslice(&self.mv.mask[0..len]);
@@ -58,8 +166,8 @@ impl Segment {
             } else {
                 // mask covers (mask has more 0 than rhs.mask), check valid value equals
                 bits[0..len].copy_from_bitslice(&rhs.mv.value[0..len]);
-                bits[0..len] ^= self.mv.value;
-                bits[0..len] &= self.mv.mask;
+                bits[0..len] ^= &self.mv.value[0..len];
+                bits[0..len] &= &self.mv.mask[0..len];
                 bits[0..len].not_any()
             }
         }
@@ -71,8 +179,8 @@ impl Segment {
             let mask = self.mv.mask | rhs.mv.mask;
             let value = self.mv.value | rhs.mv.value;
             Some(Segment {
-                mv: MaskedValue { value, mask },
-                len: min(self.len, rhs.len),
+                mv: ReMaskedValue { value, mask },
+                len: max(self.len, rhs.len),
             })
         } else {
             None
@@ -87,12 +195,12 @@ impl Segment {
 
     #[inline]
     pub fn range(&self, range: Range<usize>) -> Segment {
-        let mut value = BitArray::ZERO;
-        let mut mask = BitArray::ZERO;
+        let mut value = ReBitArray::default();
+        let mut mask = ReBitArray::default();
         value[0..range.len()].copy_from_bitslice(&self.mv.value[range.clone()]);
         mask[0..range.len()].copy_from_bitslice(&self.mv.mask[range.clone()]);
         Segment {
-            mv: MaskedValue { value, mask },
+            mv: ReMaskedValue { value, mask },
             len: range.len(),
         }
     }
@@ -184,10 +292,17 @@ impl From<MaskedValue> for Segmentizer {
     #[inline]
     fn from(mv: MaskedValue) -> Self {
         Segmentizer {
-            orig: Segment {
-                mv,
-                len: mv.mask.len(),
-            },
+            orig: Segment::from(ReMaskedValue::from(mv)),
+            pos: 0,
+        }
+    }
+}
+
+impl From<ReMaskedValue> for Segmentizer {
+    #[inline]
+    fn from(rmv: ReMaskedValue) -> Self {
+        Segmentizer {
+            orig: Segment::from(rmv),
             pos: 0,
         }
     }
@@ -251,11 +366,9 @@ impl<V> Segmentized<V> for Segmentizer {
             } else {
                 let start = Segmentized::<V>::current_pos(self);
                 let mut seg = Segmentized::<V>::pstrip_at(self, start)?;
-                unsafe {
-                    seg.orig.mv.value.as_mut_bitptr().write(assert_value);
-                    seg.orig.mv.mask.as_mut_bitptr().write(assert_mask);
-                    Some(seg)
-                }
+                seg.orig.mv.value.set(0, assert_value);
+                seg.orig.mv.mask.set(0, assert_mask);
+                Some(seg)
             }
         }
     }
@@ -266,8 +379,9 @@ pub mod tests {
     use super::*;
 
     pub fn from_str(s: &str) -> Segment {
-        let mut value = BitArray::<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder>::ZERO;
-        let mut mask = BitArray::<[HeaderBitStore; HEADERSTORENUM], HeaderBitOrder>::ZERO;
+        let mut value = ReBitArray::default();
+        let mut mask = ReBitArray::default();
+
         let mut i = 0;
         s.chars().for_each(|c| {
             match c {
@@ -282,10 +396,7 @@ pub mod tests {
             }
             i += 1;
         });
-        Segment {
-            mv: MaskedValue { value, mask },
-            len: s.len(),
-        }
+        Segment::from(ReMaskedValue { value, mask })
     }
 
     mod segment {
@@ -377,7 +488,7 @@ pub mod tests {
             let seg = from_str(str);
             let mut seger = Segmentizer::from(seg);
             let _ = Segmentized::<u32>::lpm(&mut seger, from_str("1*"));
-            assert_eq!(seger.pos, 2);
+            assert_eq!(seger.pos, 1);
         }
     }
 }

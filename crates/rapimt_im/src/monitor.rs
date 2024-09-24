@@ -1,4 +1,5 @@
 use std::{
+    cell::UnsafeCell,
     collections::{BTreeSet, BinaryHeap, HashMap},
     ops::Bound,
     rc::Rc,
@@ -12,6 +13,8 @@ use rapimt_core::{
 use rapimt_tpt::{Segmentizer, TernaryPatriciaTree};
 
 use crate::{im::InverseModel, FibMonitor};
+
+type RcRule<P, A> = Rc<Rule<P, A>>;
 
 /// Default FIB Monitor
 ///
@@ -28,12 +31,13 @@ where
     ME: MatchEncoder<'p>,
 {
     engine: &'p ME,
-    local_ap: FxHashMap<A, Predicate<ME::P>>,
     #[allow(clippy::type_complexity)]
-    tpt: TernaryPatriciaTree<Rc<Rule<ME::P, A>>, BTreeSet<Rc<Rule<ME::P, A>>>>,
-    i_rules: BinaryHeap<Rc<Rule<ME::P, A>>>,
-    d_rules: BinaryHeap<Rc<Rule<ME::P, A>>>,
-    default_rule: Rc<Rule<ME::P, A>>,
+    tpt: TernaryPatriciaTree<RcRule<ME::P, A>, BTreeSet<RcRule<ME::P, A>>>,
+    i_rules: BinaryHeap<RcRule<ME::P, A>>,
+    d_rules: BinaryHeap<RcRule<ME::P, A>>,
+    default_rule: RcRule<ME::P, A>,
+    search_handle: UnsafeCell<BTreeSet<RcRule<ME::P, A>>>,
+    local_ap: UnsafeCell<FxHashMap<A, Predicate<ME::P>>>,
 }
 
 impl<'p, A, ME> FibMonitor<A, ME::P> for DefaultFibMonitor<'p, A, ME>
@@ -81,45 +85,26 @@ where
     A: Action<Single>,
     ME: MatchEncoder<'p>,
 {
-    fn insert_tpt(&mut self, rule: Rc<Rule<ME::P, A>>) {
+    fn insert_tpt(&mut self, rule: RcRule<ME::P, A>) {
         for mv in rule.origin.iter() {
             self.tpt.insert(rule.clone(), Segmentizer::from(*mv));
         }
     }
 
-    fn delete_tpt(&mut self, rule: &Rc<Rule<ME::P, A>>) {
+    fn delete_tpt(&mut self, rule: &RcRule<ME::P, A>) {
         for mv in rule.origin.iter() {
             self.tpt.delete(rule, Segmentizer::from(*mv));
         }
     }
 
-    fn search_tpt(&self, rule: &Rc<Rule<ME::P, A>>) -> BTreeSet<Rc<Rule<ME::P, A>>> {
-        let mut set = BTreeSet::<Rc<Rule<ME::P, A>>>::default();
-        for mv in rule.origin.iter() {
-            set.extend(self.tpt.search(rule, Segmentizer::from(*mv)))
-        }
-        set
-    }
-
-    pub fn new(engine: &'p ME) -> Self {
-        // this is the default rule of every forwarding device
-        let drop_rule = Rc::new(Rule {
-            priority: -1,
-            action: A::drop_action(),
-            predicate: engine.one(),
-            origin: vec![MaskedValue::default()],
-        });
-        let tpt = TernaryPatriciaTree::new(constant::MAX_POS);
-        let i_rules = BinaryHeap::from([drop_rule.clone()]);
-        let d_rules = BinaryHeap::new();
-        let local_ap = HashMap::with_hasher(FxBuildHasher::default());
-        DefaultFibMonitor {
-            engine,
-            local_ap,
-            tpt,
-            i_rules,
-            d_rules,
-            default_rule: drop_rule,
+    fn search_tpt(&self, rule: &RcRule<ME::P, A>) -> &BTreeSet<RcRule<ME::P, A>> {
+        unsafe {
+            let set = &mut *self.search_handle.get();
+            set.clear();
+            for mv in rule.origin.iter() {
+                set.extend(self.tpt.search(Segmentizer::from(*mv)).clone())
+            }
+            set
         }
     }
 
@@ -128,7 +113,7 @@ where
         OA: Action<T, S = A> + From<A> + From<A>,
         T: Dimension,
     {
-        self.local_ap.clear();
+        unsafe { (*self.local_ap.get()).clear() };
         let mut no_overwrite = self.engine.one();
         while let Some(r) = self.i_rules.pop() {
             let mut eff = r.predicate.clone();
@@ -142,7 +127,7 @@ where
             }
             // if eff is not empty, then the action is valid
             if !eff.is_empty() {
-                self.local_ap
+                unsafe { &mut *self.local_ap.get() }
                     .entry(r.action.clone())
                     .and_modify(|mut p| p |= &eff)
                     .or_insert(eff.clone());
@@ -169,7 +154,7 @@ where
                 {
                     let eff = &y.predicate & &to_divide;
                     if !eff.is_empty() {
-                        self.local_ap
+                        unsafe { &mut *self.local_ap.get() }
                             .entry(y.action.clone())
                             .and_modify(|mut p| p |= &eff)
                             .or_insert(eff.clone());
@@ -183,14 +168,37 @@ where
             }
         }
         if !no_overwrite.is_empty() {
-            self.local_ap.insert(A::no_overwrite(), no_overwrite);
+            unsafe { &mut *self.local_ap.get() }.insert(A::no_overwrite(), no_overwrite);
         }
 
         InverseModel::from(
-            self.local_ap
+            unsafe { &mut *self.local_ap.get() }
                 .drain()
                 .map(|(a, p)| (OA::from(a.clone()), p.clone())),
         )
+    }
+
+    pub fn new(engine: &'p ME) -> Self {
+        // this is the default rule of every forwarding device
+        let drop_rule = Rc::new(Rule {
+            priority: -1,
+            action: A::drop_action(),
+            predicate: engine.one(),
+            origin: vec![MaskedValue::default()],
+        });
+        let tpt = TernaryPatriciaTree::new(constant::MAX_POS);
+        let i_rules = BinaryHeap::from([drop_rule.clone()]);
+        let d_rules = BinaryHeap::new();
+        let local_ap = HashMap::with_hasher(FxBuildHasher::default());
+        DefaultFibMonitor {
+            engine,
+            tpt,
+            i_rules,
+            d_rules,
+            default_rule: drop_rule,
+            local_ap: UnsafeCell::new(local_ap),
+            search_handle: UnsafeCell::new(BTreeSet::new()),
+        }
     }
 }
 

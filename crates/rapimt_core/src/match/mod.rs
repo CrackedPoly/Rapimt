@@ -66,8 +66,12 @@ pub struct FieldMatch<'a, U: Unsigned> {
     pub cond: Match<U>,
 }
 
-/// MaskedValue is ternary string representing an entire header match.
-#[derive(Eq, PartialEq, Hash, Default, Clone, Copy, Debug)]
+/// MaskedValue is ternary bit string representing an entire header match. Bits are stored in
+/// little-endian. For example, fields declared as "tag: 0-16, dip: 16-32" encodes
+/// dip=192.168.0.0/24, tag=2 as
+///
+/// `0100000000000000*******000000000001010100000011`
+#[derive(Eq, PartialEq, Hash, Default, Clone, Copy)]
 pub struct MaskedValue {
     pub value:
         BitArray<[constant::HeaderBitStore; constant::HEADERSTORENUM], constant::HeaderBitOrder>,
@@ -91,6 +95,10 @@ impl Binary for MaskedValue {
     }
 }
 
+/// Display the MaskedValue in a human-readable (big-endian) format.
+///
+/// For example, fields declared as "tag: 0-16, dip: 16-32" encodes dip=192.168.0.0/24, tag=2, it
+/// displays as `110000001010100000000000*******0000000000000010`.
 impl Display for MaskedValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut ternary_bits_disp = [b'*'; constant::MAX_POS];
@@ -104,6 +112,12 @@ impl Display for MaskedValue {
             };
         }
         write!(f, "{}", std::str::from_utf8(&ternary_bits_disp).unwrap())
+    }
+}
+
+impl Debug for MaskedValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
