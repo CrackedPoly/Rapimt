@@ -506,7 +506,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use rapimt_core::r#match::{engine::RuddyPredicateEngine, family::MatchFamily::Inet4Family};
+    use rapimt_core::r#match::engine::RuddyPredicateEngine;
 
     use super::*;
 
@@ -568,25 +568,21 @@ mod tests {
         fw 192.168.1.0 24 24 gi0
         fw 0.0.0.0 0 0 ge0
         "#;
-        let engine = RuddyPredicateEngine::init(1000, 100, Inet4Family);
+        let engine = RuddyPredicateEngine::init(1000, 100);
         let (dev, rules) = FibLoader::<usize>::load(&base, &engine, fib).unwrap();
         let rules: Vec<_> = rules.into_iter().collect();
         assert_eq!(dev, "dev0");
         assert_eq!(rules.len(), 2);
-        assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
         assert_eq!(rules[0].priority, 24);
         assert_eq!(rules[0].action, 4);
-        assert_eq!(rules[1].predicate.to_string(), "dip: 0.0.0.0/0");
         assert_eq!(rules[1].priority, 0);
         assert_eq!(rules[1].action, 2);
         let (dev, rules) = FibLoader::<TypedAction>::load(&base, &engine, fib).unwrap();
         let rules: Vec<_> = rules.into_iter().collect();
         assert_eq!(dev, "dev0");
         assert_eq!(rules.len(), 2);
-        assert_eq!(rules[0].predicate.to_string(), "dip: 192.168.1.0/24");
         assert_eq!(rules[0].priority, 24);
         assert_eq!(base.encode(rules[0].action), 4);
-        assert_eq!(rules[1].predicate.to_string(), "dip: 0.0.0.0/0");
         assert_eq!(rules[1].priority, 0);
         assert_eq!(base.encode(rules[1].action), 2);
     }

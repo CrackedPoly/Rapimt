@@ -2,7 +2,8 @@ use std::{cmp::min, fmt::Binary, ops::Range};
 
 use bitvec::prelude::*;
 
-use rapimt_core::{r#match::MaskedValue, HeaderBitOrder, HeaderBitStore, HEADERSTORENUM};
+use rapimt_core::prelude::*;
+use constant::{HeaderBitOrder, HeaderBitStore, HEADERSTORENUM};
 
 #[derive(Debug, Default, Eq, PartialEq, Clone, Copy)]
 pub struct Segment {

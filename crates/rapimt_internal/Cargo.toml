@@ -10,3 +10,9 @@ rapimt_io = { path = "../rapimt_io" }
 rapimt_tpt = { path = "../rapimt_tpt" }
 rapimt_ver = { path = "../rapimt_ver" }
 
+[features]
+dip = ["rapimt_core/dip"]
+sip = ["rapimt_core/sip"]
+dport = ["rapimt_core/dport"]
+sport = ["rapimt_core/sport"]
+tag = ["rapimt_core/tag"]

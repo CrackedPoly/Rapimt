@@ -8,3 +8,23 @@ edition = "2021"
 [dependencies]
 bitvec = { workspace = true }
 RuDDy = { workspace = true }
+phf = { version = "0.11", default-features = false }
+funty = "2.0.0"
+
+[build-dependencies]
+phf = { version = "0.11", default-features = false }
+phf_codegen = "0.11.1"
+
+[features]
+default = ["dip", "sip", "sport", "dport", "tag"]
+dip = []
+sip = []
+dport = []
+sport = []
+tag = []
+
+[profile.dev]
+overflow-checks = false
+
+[profile.release]
+overflow-checks = false

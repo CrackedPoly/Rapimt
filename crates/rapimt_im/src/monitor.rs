@@ -7,8 +7,7 @@ use std::{
 use fxhash::{FxBuildHasher, FxHashMap};
 use rapimt_core::{
     action::{Action, Dimension, Single},
-    r#match::{MaskedValue, MatchEncoder, Predicate, Rule},
-    MAX_POS,
+    r#match::{family::constant, MaskedValue, MatchEncoder, Predicate, Rule},
 };
 use rapimt_tpt::{Segmentizer, TernaryPatriciaTree};
 
@@ -51,13 +50,14 @@ where
 
     fn update<OA, T>(
         &mut self,
-        insertion: Vec<Rule<ME::P, A>>,
-        deletion: Vec<Rule<ME::P, A>>,
+        insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
+        deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
     ) -> InverseModel<OA, ME::P, T>
     where
         OA: Action<T, S = A> + From<A>,
         T: Dimension,
     {
+        let firse_time = !self.i_rules.is_empty();
         insertion.into_iter().for_each(|r| {
             let r = Rc::new(r);
             self.insert_tpt(r.clone());
@@ -68,7 +68,11 @@ where
             self.delete_tpt(&r);
             self.d_rules.push(r.clone());
         });
-        self.refresh()
+        let im = self.refresh();
+        if firse_time {
+            self.insert_tpt(self.default_rule.clone());
+        }
+        im
     }
 }
 
@@ -103,9 +107,9 @@ where
             priority: -1,
             action: A::drop_action(),
             predicate: engine.one(),
-            origin: vec![MaskedValue::from((0u128, 0u128))],
+            origin: vec![MaskedValue::default()],
         });
-        let tpt = TernaryPatriciaTree::new(MAX_POS);
+        let tpt = TernaryPatriciaTree::new(constant::MAX_POS);
         let i_rules = BinaryHeap::from([drop_rule.clone()]);
         let d_rules = BinaryHeap::new();
         let local_ap = HashMap::with_hasher(FxBuildHasher::default());
@@ -194,7 +198,7 @@ where
 mod tests {
     use rapimt_core::{
         action::{seq_action::SeqActions, Multiple, Single},
-        r#match::{engine::RuddyPredicateEngine, family::MatchFamily},
+        r#match::engine::RuddyPredicateEngine,
     };
     use rapimt_io::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
@@ -212,16 +216,15 @@ mod tests {
         "#;
         let fib = r#"
         name dev0
-        fw 192.168.1.0 24 24 gi0
         fw 0.0.0.0 1 1 ge0
+        fw 192.168.1.0 24 24 gi0
         "#;
         // load port information
         let loader = DefaultInstLoader::default();
         let codex = InstanceLoader::load(&loader, spec).unwrap();
 
         // load fibs
-        let family = MatchFamily::Inet4Family;
-        let engine = RuddyPredicateEngine::init(100, 10, family);
+        let engine = RuddyPredicateEngine::init(100, 100);
 
         // load fib rules and encode action to usize with codex
         let (_, fibs) = FibLoader::<usize>::load(&codex, &engine, fib).unwrap();

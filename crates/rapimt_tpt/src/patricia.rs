@@ -313,7 +313,12 @@ where
         self.root = self.insert_rec(self.root.clone(), value, &mut segmentized, 0)
     }
 
-    fn search_rec<S>(&self, node_ref: Option<TreeNodeRef<V, H>>, _value: &V, segmentized: &mut S) -> H
+    fn search_rec<S>(
+        &self,
+        node_ref: Option<TreeNodeRef<V, H>>,
+        _value: &V,
+        segmentized: &mut S,
+    ) -> H
     where
         S: Segmentized<V> + Binary,
     {
@@ -332,33 +337,21 @@ where
 
             let wseger = segmentized.cut();
             let wset = if let Some(mut wseger) = wseger {
-                self.search_rec(
-                    node.as_ref().borrow().wch.clone(),
-                    _value,
-                    &mut wseger,
-                )
+                self.search_rec(node.as_ref().borrow().wch.clone(), _value, &mut wseger)
             } else {
                 H::default()
             };
 
             let lseger = segmentized.assert_next(false, true);
             let lset = if let Some(mut lseger) = lseger {
-                self.search_rec(
-                    node.as_ref().borrow().lch.clone(),
-                    _value,
-                    &mut lseger,
-                )
+                self.search_rec(node.as_ref().borrow().lch.clone(), _value, &mut lseger)
             } else {
                 H::default()
             };
 
             let rseger = segmentized.assert_next(true, true);
             let rset = if let Some(mut rseger) = rseger {
-                self.search_rec(
-                    node.as_ref().borrow().rch.clone(),
-                    _value,
-                    &mut rseger,
-                )
+                self.search_rec(node.as_ref().borrow().rch.clone(), _value, &mut rseger)
             } else {
                 H::default()
             };

@@ -3,14 +3,13 @@ use std::{collections::HashMap, time::SystemTime};
 use fxhash::FxHashMap;
 use rapimt_core::{
     action::{seq_action::SeqActions, Multiple},
-    r#match::{engine::RuddyPredicateEngine, family::MatchFamily},
+    r#match::engine::RuddyPredicateEngine,
 };
 use rapimt_im::{DefaultFibMonitor, FibMonitor, InverseModel};
 use rapimt_io::{DefaultInstLoader, FibLoader, InstanceLoader, PortInfoBase};
 
 fn main() {
-    let family = MatchFamily::Inet4Family;
-    let engine = RuddyPredicateEngine::init(100, 10, family);
+    let engine = RuddyPredicateEngine::init(100, 10);
     let parser = DefaultInstLoader {};
 
     // get device names of dataset
@@ -66,6 +65,6 @@ fn main() {
     println!("Monitor refresh time: {} us", monitor_timer / 1000);
     println!("Inverse model << time: {} us", im_timer / 1000);
 
-    // the number of equivalent classes in this stanford dataset is 155 (through a ton of tests)
+    // the number of equivalent classes in this stanford dataset is 155 (verified by a ton of debugging)
     assert_eq!(im.len(), 155)
 }

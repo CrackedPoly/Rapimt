@@ -1,6 +1,6 @@
 [package]
 name = "rapimt"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -21,10 +21,18 @@ RuDDy = { git = "https://github.com/CrackedPoly/RuDDy.git", features = [
   "default",
 ] }
 
+[dependencies]
+rapimt_internal = { path = "crates/rapimt_internal" }
+
+[features]
+default = ["dip"]
+dip = ["rapimt_internal/dip"]
+sip = ["rapimt_internal/sip"]
+dport = ["rapimt_internal/dport"]
+sport = ["rapimt_internal/sport"]
+tag = ["rapimt_internal/tag"]
+
 [[bin]]
 doc = false
 name = "rimt"
 path = "crates/rapimt_cli/src/bin/rimt.rs"
-
-[dependencies]
-rapimt_internal = { path = "crates/rapimt_internal" }
