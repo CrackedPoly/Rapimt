@@ -41,6 +41,7 @@ pub mod family;
 use std::{
     fmt::{Binary, Debug, Display, Formatter},
     hash::Hash,
+    io::Result,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign},
 };
 
@@ -280,9 +281,9 @@ where
 /// predicates.
 pub trait PredicateEngine<'a>: MatchEncoder<'a> {
     /// Deserialize a predicate according to the buffer.
-    fn read_buffer(&'a self, buffer: &[u8]) -> Option<Predicate<Self::P>>;
+    fn read_buffer(&'a self, buffer: &[u8]) -> Result<Predicate<Self::P>>;
     /// Serialize the predicate to the buffer.
-    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> usize;
+    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> Result<()>;
 
     #[cfg(feature = "dip")]
     fn rewrite_dip(&'a self, before: &Predicate<Self::P>, m: Match<u32>) -> Predicate<Self::P>;

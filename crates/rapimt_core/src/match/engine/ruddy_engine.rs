@@ -1,8 +1,10 @@
 use std::{
     cell::RefCell,
     cmp::Ordering,
-    fmt::{Debug, Display},
+    fmt::{Debug, Display, Result as FmtResult},
     hash::Hash,
+    io::Result as IoResult,
+    str::from_utf8,
 };
 
 use funty::Unsigned;
@@ -232,18 +234,15 @@ impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
 }
 
 impl<'a> PredicateEngine<'a> for RuddyPredicateEngine {
-    fn read_buffer(&'a self, buffer: &[u8]) -> Option<Predicate<Self::P>> {
-        let bdd = self.manager.borrow_mut().read_buffer(buffer);
-        if let Some(bdd) = bdd {
-            self.manager.borrow_mut().ref_bdd(bdd);
-            Some(Predicate::from(RuddyPredicate { bdd, engine: self }))
-        } else {
-            None
-        }
+    fn read_buffer(&'a self, mut buffer: &[u8]) -> IoResult<Predicate<Self::P>> {
+        let bdd =
+            BddIO::<Vec<u8>, &[u8]>::deserialize(&mut *self.manager.borrow_mut(), &mut buffer)?;
+        Ok(Predicate::from(RuddyPredicate { bdd, engine: self }))
     }
 
-    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> usize {
-        self.manager.borrow_mut().write_buffer(pred.0.bdd, buffer)
+    fn write_buffer(&'a self, pred: &Predicate<Self::P>, buffer: &mut Vec<u8>) -> IoResult<()> {
+        BddIO::<Vec<u8>, &[u8]>::serialize(&*self.manager.borrow_mut(), pred.0.bdd, buffer)?;
+        Ok(())
     }
 
     #[cfg(feature = "dip")]
@@ -468,14 +467,28 @@ impl PredicateInner for RuddyPredicate<'_> {
 }
 
 impl Display for RuddyPredicate<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.engine.manager.borrow().print(f, self.bdd)?;
-        Ok(())
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> FmtResult {
+        let mut buffer = vec![];
+        if self
+            .engine
+            .manager
+            .borrow()
+            .print(self.bdd, &mut buffer)
+            .is_ok()
+        {
+            if let Ok(str) = from_utf8(&buffer) {
+                write!(f, "{}", str)
+            } else {
+                Err(std::fmt::Error)
+            }
+        } else {
+            Err(std::fmt::Error)
+        }
     }
 }
 
 impl Debug for RuddyPredicate<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> FmtResult {
         writeln!(f)?;
         writeln!(f, "Ruddy Predicate print in set:")?;
         #[cfg(feature = "dip")]
