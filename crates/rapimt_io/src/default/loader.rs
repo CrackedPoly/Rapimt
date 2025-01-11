@@ -22,13 +22,13 @@ use nom::{
 };
 
 use rapimt_core::{
-    action::{Action, ActionEncoder, ActionType, Single, UncodedAction},
-    r#match::{FieldMatch, Match, PredicateEngine, Rule},
+    action::{Action, ActionEncoder, fwd::FwdActionType, Single, UncodedAction},
+    r#match::{raw_match::{FieldMatch, Match}, engine::PredicateEngine, rule::Rule},
 };
 
 use crate::{
-    basic::parser::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num},
-    {FibLoader, InstanceLoader},
+    default::parser::basic::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num},
+    default::{FibLoader, InstanceLoader},
 };
 
 /// [NeighborInfo] keeps the mapping of the physical port to the neighbor device.
@@ -65,7 +65,7 @@ impl Borrow<str> for NeighborInfo {
 #[derive(Debug)]
 struct PortInfo {
     name: String,
-    mode: ActionType,
+    mode: FwdActionType,
     p_ports: Vec<Rc<str>>,   // physical port names, reference to NeighborInfo
     neighbors: Vec<Rc<str>>, // neighbor names, reference to NeighborInfo
 }
@@ -136,19 +136,26 @@ impl<'a> Action<Single> for TypedAction<'a> {
         TypedAction::NonOverwrite
     }
 
-    fn overwritten(&self, rhs: &Self) -> Self {
+    fn overwrite(&self, rhs: &Self) -> Self {
         match rhs {
             TypedAction::NonOverwrite => *self,
             _ => *rhs,
         }
     }
+
+    fn overwrite_(&mut self, rhs: &Self) {
+        match rhs {
+            TypedAction::NonOverwrite => {},
+            _ => *self = *rhs,
+        }
+    }
 }
 
 impl<'a> UncodedAction for TypedAction<'a> {
-    fn get_type(&self) -> ActionType {
+    fn get_type(&self) -> impl Into<u8> {
         match self {
-            TypedAction::NonOverwrite => ActionType::DROP,
-            TypedAction::Drop => ActionType::DROP,
+            TypedAction::NonOverwrite => FwdActionType::DROP,
+            TypedAction::Drop => FwdActionType::DROP,
             TypedAction::Typed(t) => t.origin.ports.borrow().get_index(t.idx).unwrap().mode,
         }
     }
@@ -226,7 +233,7 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
                     });
                     let (idx, _) = ports.as_mut().insert_full(PortInfo {
                         name: port_name.to_string(),
-                        mode: ActionType::FORWARD,
+                        mode: FwdActionType::FORWARD,
                         p_ports: vec![port_name.clone()],
                         neighbors: vec![port_name],
                     });
@@ -246,13 +253,13 @@ impl<'a> InstanceLoader<'a, PortInfoBase> for DefaultInstLoader {
         let ports = UnsafeCell::new(vec![
             PortInfo {
                 name: "no_overwrite_place_holder".to_owned(),
-                mode: ActionType::DROP,
+                mode: FwdActionType::DROP,
                 p_ports: vec![],
                 neighbors: vec![],
             },
             PortInfo {
                 name: "default_drop".to_owned(),
-                mode: ActionType::DROP,
+                mode: FwdActionType::DROP,
                 p_ports: vec![],
                 neighbors: vec![],
             },
@@ -265,7 +272,7 @@ impl<'a> InstanceLoader<'a, PortInfoBase> for DefaultInstLoader {
             let nbr = nbrs_mut.get(port_name).unwrap();
             ports_mut.push(PortInfo {
                 name: port_name.to_owned(),
-                mode: ActionType::FORWARD,
+                mode: FwdActionType::FORWARD,
                 p_ports: vec![nbr.p_port.clone()],
                 neighbors: vec![],
             });
@@ -323,11 +330,11 @@ fn parse_dev<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a
     preceded(pair(tag("name"), multispace1), parse_ident)(input)
 }
 
-fn parse_mode<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, ActionType, E> {
+fn parse_mode<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, FwdActionType, E> {
     let (rest, mode) = alt((tag("ecmp"), tag("flood")))(input)?;
     match mode {
-        "ecmp" => Ok((rest, ActionType::ECMP)),
-        "flood" => Ok((rest, ActionType::FLOOD)),
+        "ecmp" => Ok((rest, FwdActionType::ECMP)),
+        "flood" => Ok((rest, FwdActionType::FLOOD)),
         _ => Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Tag))),
     }
 }
@@ -538,27 +545,27 @@ mod tests {
         // index 0 is for no overwrite action
         let p0 = ports.get_index(1).unwrap();
         assert_eq!(p0.name, "default_drop");
-        assert_eq!(p0.mode, ActionType::DROP);
+        assert_eq!(p0.mode, FwdActionType::DROP);
         assert_eq!(p0.p_ports.len(), 0);
         let p1 = ports.get_index(2).unwrap();
         assert_eq!(p1.name, "ge0");
-        assert_eq!(p1.mode, ActionType::FORWARD);
+        assert_eq!(p1.mode, FwdActionType::FORWARD);
         assert_eq!(p1.p_ports.len(), 1);
         assert_eq!(p1.p_ports[0].as_ref(), "ge0");
         let p2 = ports.get_index(3).unwrap();
         assert_eq!(p2.name, "ge1");
-        assert_eq!(p2.mode, ActionType::FORWARD);
+        assert_eq!(p2.mode, FwdActionType::FORWARD);
         assert_eq!(p2.p_ports.len(), 1);
         assert_eq!(p2.p_ports[0].as_ref(), "ge1");
         let p3 = ports.get_index(4).unwrap();
         assert_eq!(p3.name, "gi0");
-        assert_eq!(p3.mode, ActionType::ECMP);
+        assert_eq!(p3.mode, FwdActionType::ECMP);
         assert_eq!(p3.p_ports.len(), 2);
         assert_eq!(p3.p_ports[0].as_ref(), "ge0");
         assert_eq!(p3.p_ports[1].as_ref(), "ge1");
         let p4 = ports.get_index(5).unwrap();
         assert_eq!(p4.name, "gi1");
-        assert_eq!(p4.mode, ActionType::FLOOD);
+        assert_eq!(p4.mode, FwdActionType::FLOOD);
         assert_eq!(p4.p_ports.len(), 2);
         assert_eq!(p4.p_ports[0].as_ref(), "ge0");
         assert_eq!(p4.p_ports[1].as_ref(), "ge1");
@@ -622,12 +629,12 @@ mod tests {
         assert_eq!(a3, 3);
         assert_eq!(a4, 4);
         assert_eq!(a5, 5);
-        assert_eq!(base.decode(a0).get_type(), ActionType::DROP);
-        assert_eq!(base.decode(a1).get_type(), ActionType::DROP);
-        assert_eq!(base.decode(a2).get_type(), ActionType::FORWARD);
-        assert_eq!(base.decode(a3).get_type(), ActionType::FORWARD);
-        assert_eq!(base.decode(a4).get_type(), ActionType::ECMP);
-        assert_eq!(base.decode(a5).get_type(), ActionType::FLOOD);
+        assert_eq!(base.decode(a0).get_type().into(), FwdActionType::DROP.into());
+        assert_eq!(base.decode(a1).get_type().into(), FwdActionType::DROP.into());
+        assert_eq!(base.decode(a2).get_type().into(), FwdActionType::FORWARD.into());
+        assert_eq!(base.decode(a3).get_type().into(), FwdActionType::FORWARD.into());
+        assert_eq!(base.decode(a4).get_type().into(), FwdActionType::ECMP.into());
+        assert_eq!(base.decode(a5).get_type().into(), FwdActionType::FLOOD.into());
         assert_eq!(
             base.decode(a4)
                 .get_next_hops()

@@ -5,8 +5,8 @@ use rapimt_core::{
     action::{seq_action::SeqActions, Multiple},
     r#match::engine::RuddyPredicateEngine,
 };
-use rapimt_im::{DefaultFibMonitor, FibMonitor, InverseModel};
-use rapimt_io::{DefaultInstLoader, FibLoader, InstanceLoader, PortInfoBase};
+use rapimt_im::prelude::{DefaultFibMonitor, FibMonitor, InverseModel};
+use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, PortInfoBase};
 
 fn main() {
     let engine = RuddyPredicateEngine::init(100, 10);

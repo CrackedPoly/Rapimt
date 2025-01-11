@@ -1,5 +1,5 @@
-//! This module provides Ternary Patricia Tree (TPT) implementation for FIB monitor to store rules,
-//! usually it will only be used internally.
+//! This module provides Ternary Patricia Tree (TPT) implementation for FIB monitor to insert /
+//! remove / lookup rules.
 mod patricia;
 mod segment;
 

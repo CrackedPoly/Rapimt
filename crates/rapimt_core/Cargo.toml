@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 bitvec = { workspace = true }
 RuDDy = { workspace = true }
+num_enum = { workspace = true }
 phf = { version = "0.11", default-features = false }
 funty = "2.0.0"
 

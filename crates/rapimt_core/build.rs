@@ -3,6 +3,32 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
+/// Generate packet field declarations for the match family.
+/// An example of generated code:
+/// ```rust
+/// pub static FIELD_MAP: phf::OrderedMap<&'static str, (usize, usize)> = ::phf::OrderedMap {
+///     key: 12913932095322966823,
+///     disps: &[
+///         (1, 0),
+///     ],
+///     idxs: &[
+///         3,
+///         4,
+///         0,
+///         2,
+///         1,
+///     ],
+///     entries: &[
+///         ("tag", (0usize, 16usize)),
+///         ("sport", (16usize, 32usize)),
+///         ("dport", (32usize, 48usize)),
+///         ("sip", (48usize, 80usize)),
+///         ("dip", (80usize, 112usize)),
+///     ],
+/// };
+///
+/// pub const MAX_POS: usize = 112usize;
+/// ```
 fn main() {
     let path = Path::new(&env::var("OUT_DIR").unwrap()).join("codegen.rs");
     let mut file = BufWriter::new(File::create(&path).unwrap());

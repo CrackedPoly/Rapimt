@@ -11,7 +11,10 @@ use funty::Unsigned;
 use ruddy::{Bdd, BddIO, BddManager, BddOp, PrintSet, Ruddy};
 
 use crate::r#match::{
-    family::constant, FieldMatch, Match, MatchEncoder, Predicate, PredicateEngine, PredicateInner,
+    family::constant,
+    raw_match::{FieldMatch, Match},
+    predicate::{Predicate, PredicateInner},
+    engine::{MatchEncoder, PredicateEngine},
 };
 
 /// The RuddyPredicateEngine is a predicate engine based on the
@@ -509,7 +512,7 @@ impl Debug for RuddyPredicate<'_> {
 #[cfg(test)]
 mod tests {
     use crate::prelude::MaskedValue;
-    use crate::r#match::{macros::ipv4_to_match, FieldMatch, Match};
+    use crate::r#match::raw_match::{macros::ipv4_to_match, FieldMatch, Match};
     use crate::{fm_exact_from, fm_ipv4_from, fm_range_from};
     use std::fmt::Write;
 

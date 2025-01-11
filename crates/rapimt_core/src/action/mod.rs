@@ -1,6 +1,33 @@
 //! # Action
-//! TODO::This module needs to be documented.
+//!
+//! ## Relations of important traits, enums and structs.
+//!
+//! An action in the system is initially an `UncodedAction` that contains rich information about
+//! the action in a specific component. It is then encoded by an `ActionEncoder` into a
+//! `CodedAction` with an explanation of the action type. The CodedAction is opaque 
+//!
+//!
+//! ```text
+//!                                 UncodedAction                                   
+//!                      +----------------+-----------------+                       
+//!                      v                v                 v                       
+//! ActionType:    AclActionType    FwdActionType    XXXActionType                  
+//! (All enums)          |                |                 |                       
+//!                      v                v                 v                       
+//!                    +--------------------------------------+                     
+//!                    |            ActionEncoder             |                     
+//!                    +------------------+-------------------+                     
+//!                                       v                                         
+//!                                 CodedAction               impls Action<Single>  
+//!                              (Primitive types)                                  
+//!                              +--------+--------+                                
+//!                              v                 v                                
+//!                         SeqActions         TreeActions    impls Action<Multiple>
+//!                         (Vector)           (MerkleTree)                         
+//! ```
 pub mod seq_action;
+pub mod fwd;
+pub mod acl;
 
 use std::{
     fmt::{Debug, Display},
@@ -9,37 +36,28 @@ use std::{
     rc::Rc,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub enum ActionType {
-    #[default]
-    DROP = 0,
-    FORWARD = 1,
-    FLOOD = 2,
-    ECMP = 3,
-    FAILOVER = 4,
-}
-
-impl From<i32> for ActionType {
-    fn from(v: i32) -> Self {
-        match v {
-            0 => ActionType::DROP,
-            1 => ActionType::FORWARD,
-            2 => ActionType::FLOOD,
-            3 => ActionType::ECMP,
-            4 => ActionType::FAILOVER,
-            _ => panic!("Invalid ActionType"),
-        }
-    }
+pub trait ActionType:
+    Into<u8> +
+    Clone +
+    Debug +
+    Copy +
+    PartialEq +
+    Eq +
+    Hash +
+    PartialOrd +
+    Ord +
+    Default
+{
 }
 
 /// Dimension is a empty trait that represents the type of action. Now, we have two types of
 /// actions: [Single] and [Multiple].
 pub trait Dimension {}
 
-/// Single means the action is one-dimensional, it can only contain an action of a single device.
+/// [Single] means the action is one-dimensional, it can only contain an action of a single device.
 pub struct Single {}
 
-/// Multiple means the action is multi-dimensional, it can contain multiple actions of multiple
+/// [Multiple] means the action is multi-dimensional, it contains actions of multiple
 /// devices.
 pub struct Multiple {}
 
@@ -47,6 +65,13 @@ impl Dimension for Multiple {}
 
 impl Dimension for Single {}
 
+/// [Action] trait represents an action of desired dimension. Use type parameter to distinguish the
+/// dimension of action. Required methods are:
+/// - from: convert a single form of action to itself. note: how to access the single action from
+///         this action is not defined in this trait.
+/// - drop_action: return an action that represents drop.
+/// - no_overwrite: return an action that represents no action overwrite in Fast-IMT theory.
+/// - overwritten: return an action that represents the overwrite of self by rhs.
 pub trait Action<T: Dimension>: From<Self::S> + Eq + Hash + Clone + Debug {
     // What single form of action it contains. For structs that implements Action<Single>, it must
     // be itself, while for Action<Multiple> structs, it should define one.
@@ -54,7 +79,8 @@ pub trait Action<T: Dimension>: From<Self::S> + Eq + Hash + Clone + Debug {
 
     fn drop_action() -> Self;
     fn no_overwrite() -> Self;
-    fn overwritten(&self, rhs: &Self) -> Self;
+    fn overwrite(&self, rhs: &Self) -> Self;
+    fn overwrite_(&mut self, rhs: &Self);
 }
 
 /// UncodedAction is an action on a specific device, it should have rich information such as device
@@ -63,13 +89,13 @@ pub trait Action<T: Dimension>: From<Self::S> + Eq + Hash + Clone + Debug {
 ///
 /// ***This trait is manufacture-specific.***
 pub trait UncodedAction: Action<Single> + Clone {
-    fn get_type(&self) -> ActionType;
+    fn get_type(&self) -> impl Into<u8>;
     fn get_next_hops(&self) -> Option<impl IntoIterator<Item = &Rc<str>>>;
 }
 
-/// CodedAction should have fixed size and can live in stack to achieve better performance.
-/// [Default] trait implementation default() should return a value that represents no action
-/// overwrite, refer to Fast-IMT theory for more information.
+/// CodedAction should have fixed size and should live in the stack to achieve better performance.
+/// [Default] trait implementation default() is expected to return a value that represents no
+/// action overwrite, refer to Fast-IMT theory for more information.
 ///
 /// ***It seems an integer is sufficient, but we leave this trait for flexibility***
 pub trait CodedAction:
@@ -88,30 +114,40 @@ pub trait CodedAction:
 {
 }
 
-impl Action<Single> for usize {
-    type S = Self;
-
-    #[inline]
-    fn drop_action() -> Self {
-        1
-    }
-
-    #[inline]
-    fn no_overwrite() -> Self {
-        0
-    }
-
-    #[inline]
-    fn overwritten(&self, rhs: &Self) -> Self {
-        if *rhs == 0 {
-            *self
-        } else {
-            *rhs
-        }
-    }
+macro_rules! impl_coded_action_for_ints {
+    ($($t:ty),*) => {
+        $(
+            impl Action<Single> for $t {
+                type S = Self;
+                #[inline]
+                fn drop_action() -> Self {
+                    1 as Self
+                }
+                #[inline]
+                fn no_overwrite() -> Self {
+                    0 as Self
+                }
+                #[inline]
+                fn overwrite(&self, rhs: &Self) -> Self {
+                    if *rhs == 0 {
+                        *self
+                    } else {
+                        *rhs
+                    }
+                }
+                #[inline]
+                fn overwrite_(&mut self, rhs: &Self) {
+                    if *rhs != 0 {
+                        *self = *rhs;
+                    }
+                }
+            }
+            impl CodedAction for $t {}
+        )*
+    };
 }
 
-impl CodedAction for usize {}
+impl_coded_action_for_ints!(usize, u128, u64, u32, u16, u8, isize, i128, i64, i32, i16, i8);
 
 /// ActionEncoder is essentially an instance that has all information about this device's topology
 /// (name, ports, port mode, neighbors), it can encode/decode raw action into/from CodedAction
@@ -131,8 +167,8 @@ where
 
 pub trait CodedActions:
     Action<Multiple>
-    + Index<usize, Output = <Self as Action<Multiple>>::S>
-    + IndexMut<usize, Output = <Self as Action<Multiple>>::S>
+    + Index<usize, Output = <Self as Action<Multiple>>::S>      // read by idx
+    + IndexMut<usize, Output = <Self as Action<Multiple>>::S>   // update by idx in-place
     + Clone
     + Hash
     + Eq
@@ -143,7 +179,7 @@ pub trait CodedActions:
 
     // Required methods
     fn len(&self) -> usize;
-    fn resize(&mut self, to: usize, offset: usize);
+    fn resize_(&mut self, to: usize, offset: usize);
     fn diff(&self, rhs: &Self) -> usize;
 
     // Provided methods

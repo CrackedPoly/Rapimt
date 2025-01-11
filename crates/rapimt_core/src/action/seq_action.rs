@@ -7,27 +7,30 @@ use crate::action::{CodedAction, CodedActions};
 
 use super::{Action, Multiple};
 
-/// A sequence of actions stored in Vec. Generics `N` is the hint capacity of the Vec, which is
-/// usually the network size.
+/// A sequence of actions stored in Vec. Const generic `N` is the hint capacity of the Vec, which
+/// is usually the network size.
 #[derive(Eq, PartialEq, Hash, Clone, Debug, Default)]
 pub struct SeqActions<A: CodedAction, const N: usize>(Vec<A>);
 
 impl<A: CodedAction, const N: usize> Action<Multiple> for SeqActions<A, N> {
     type S = A;
 
+    #[inline]
     fn drop_action() -> Self {
         let mut v = Vec::with_capacity(N);
         v.push(A::drop_action());
         SeqActions(v)
     }
 
+    #[inline]
     fn no_overwrite() -> Self {
         let mut v = Vec::with_capacity(N);
         v.push(A::no_overwrite());
         SeqActions(v)
     }
 
-    fn overwritten(&self, rhs: &Self) -> Self {
+    #[inline]
+    fn overwrite(&self, rhs: &Self) -> Self {
         debug_assert_eq!(self.0.len(), rhs.0.len());
         let n_dim = self.0.len();
         let mut new_actions = Vec::with_capacity(self.0.capacity());
@@ -39,6 +42,17 @@ impl<A: CodedAction, const N: usize> Action<Multiple> for SeqActions<A, N> {
             }
         }
         SeqActions(new_actions)
+    }
+
+    #[inline]
+    fn overwrite_(&mut self, rhs: &Self) {
+        debug_assert_eq!(self.0.len(), rhs.0.len());
+        let n_dim = self.0.len();
+        for i in 0..n_dim {
+            if rhs[i] != A::default() {
+                self[i] = rhs[i];
+            }
+        }
     }
 }
 
@@ -76,7 +90,8 @@ impl<A: CodedAction, const N: usize> CodedActions for SeqActions<A, N> {
         self.0.len()
     }
 
-    fn resize(&mut self, to: usize, offset: usize) {
+    // resize the Actions in-place
+    fn resize_(&mut self, to: usize, offset: usize) {
         let n_dim = self.0.len();
         if to > self.0.capacity() {
             self.0.reserve(to - n_dim);
@@ -124,11 +139,11 @@ mod tests {
     #[test]
     fn test_seq_actions_resize() {
         let mut a = SeqActions::from(&[1]);
-        a.resize(3, 2);
+        a.resize_(3, 2);
         assert_eq!(a[1], 0);
         assert_eq!(a[2], 1);
         let mut b = SeqActions::from(&[1, 2, 3]);
-        b.resize(2, 0);
+        b.resize_(2, 0);
         assert_eq!(b[1], 2);
     }
 
@@ -153,11 +168,11 @@ mod tests {
     fn test_seq_actions_overwrite() {
         let a = SeqActions::from(&[1]);
         let b = SeqActions::from(&[2]);
-        let a = a.overwritten(&b);
+        let a = a.overwrite(&b);
         assert_eq!(a[0], 2);
         let c = SeqActions::from(&[1, 2, 3]);
         let d = SeqActions::from(&[1, 0, 4]);
-        let c = c.overwritten(&d);
+        let c = c.overwrite(&d);
         assert_eq!(c[0], 1);
         assert_eq!(c[1], 2);
         assert_eq!(c[2], 4);

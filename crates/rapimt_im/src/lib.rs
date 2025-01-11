@@ -3,10 +3,7 @@
 mod im;
 mod monitor;
 
-use rapimt_core::{
-    action::{Action, Dimension, Single},
-    r#match::{PredicateInner, Rule},
-};
+use rapimt_core::prelude::{Action, Dimension, Single, PredicateInner, Rule};
 
 pub use {im::InverseModel, monitor::DefaultFibMonitor};
 

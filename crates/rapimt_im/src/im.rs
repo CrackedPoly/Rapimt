@@ -6,10 +6,7 @@ use std::{
 };
 
 use fxhash::FxBuildHasher;
-use rapimt_core::{
-    action::{Action, CodedActions, Dimension, Multiple, Single},
-    r#match::{Predicate, PredicateInner},
-};
+use rapimt_core::prelude::{Predicate, PredicateInner, Action, CodedActions, Dimension, Multiple, Single};
 
 #[derive(Debug)]
 pub struct InverseModel<A: Action<T>, P: PredicateInner, T: Dimension> {
@@ -102,7 +99,7 @@ where
                 let mut py = ey.1.clone();
                 let pxy = &px & &py;
                 if !pxy.is_empty() {
-                    let axy = ex.0.overwritten(&ey.0);
+                    let axy = ex.0.overwrite(&ey.0);
                     result
                         .entry(axy)
                         .and_modify(|mut p0| p0 |= &pxy)
@@ -137,7 +134,7 @@ where
 {
     pub fn resize(&mut self, to: usize, offset: usize) {
         for i in 0..self.len() {
-            self[i].0.resize(to, offset);
+            self[i].0.resize_(to, offset);
         }
     }
 }

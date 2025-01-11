@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use peak_alloc::PeakAlloc;
-use rapimt_core::r#match::MaskedValue;
-use rapimt_tpt::{Segmentizer, TernaryPatriciaTree};
+use rapimt_core::prelude::MaskedValue;
+use rapimt_tpt::prelude::{Segmentizer, TernaryPatriciaTree};
 
 #[test]
 #[ignore = "test should be run mannually"]

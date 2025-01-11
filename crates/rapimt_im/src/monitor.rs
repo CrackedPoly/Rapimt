@@ -6,11 +6,8 @@ use std::{
 };
 
 use fxhash::{FxBuildHasher, FxHashMap};
-use rapimt_core::{
-    action::{Action, Dimension, Single},
-    r#match::{family::constant, MaskedValue, MatchEncoder, Predicate, Rule},
-};
-use rapimt_tpt::{Segmentizer, TernaryPatriciaTree};
+use rapimt_core::prelude::{Action, Dimension, Single, constant, MaskedValue, MatchEncoder, Predicate, Rule};
+use rapimt_tpt::prelude::{Segmentizer, TernaryPatriciaTree};
 
 use crate::{im::InverseModel, FibMonitor};
 
@@ -204,11 +201,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use rapimt_core::{
-        action::{seq_action::SeqActions, Multiple, Single},
-        r#match::engine::RuddyPredicateEngine,
+    use rapimt_core::prelude::{
+        seq_action::SeqActions, Multiple, Single,RuddyPredicateEngine,
     };
-    use rapimt_io::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
+    use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
     use crate::FibMonitor;
     use crate::{monitor::DefaultFibMonitor, InverseModel};
