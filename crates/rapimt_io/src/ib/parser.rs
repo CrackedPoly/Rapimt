@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, ops::Index};
+use std::borrow::Borrow;
 
 use funty::Unsigned;
 use num_enum::IntoPrimitive;
