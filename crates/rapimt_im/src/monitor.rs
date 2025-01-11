@@ -1,122 +1,241 @@
 use std::{
+    borrow::Borrow,
     cell::UnsafeCell,
     collections::{BTreeSet, BinaryHeap, HashMap},
-    ops::Bound,
+    ops::{Bound, RangeBounds},
     rc::Rc,
 };
 
 use fxhash::{FxBuildHasher, FxHashMap};
-use rapimt_core::prelude::{Action, Dimension, Single, constant, MaskedValue, MatchEncoder, Predicate, Rule};
+use rapimt_core::prelude::{
+    constant, Action, Dimension, MaskedValue, MatchEncoder, Predicate, PredicateInner, Rule, Single,
+};
 use rapimt_tpt::prelude::{Segmentizer, TernaryPatriciaTree};
 
-use crate::{im::InverseModel, FibMonitor};
+use crate::im::{InverseModel, InverseModelMonoid};
 
 type RcRule<P, A> = Rc<Rule<P, A>>;
 
-/// Default FIB Monitor
-///
-/// Default FIB Monitor functions as FIB storage of a forwarding device. A monitor has methods to
-/// insert and delete FIB rules, and output an inverse model of the current forwarding state.
-///
-/// Generic parameters:
-/// - `A`: Action<Single> type, which is used to represent the action of a FIB rule.
-/// - `ME`: MatchEncoder type, which is used provide default "match any packet" predicate for
-///   the default rule..
-pub struct DefaultFibMonitor<'p, A, ME>
+pub trait IntoRangeIterator<'a, K, T>
 where
-    A: Action<Single>,
-    ME: MatchEncoder<'p>,
+    T: Ord + ?Sized,
+    K: Borrow<T> + Ord + 'a,
 {
-    engine: &'p ME,
-    #[allow(clippy::type_complexity)]
-    tpt: TernaryPatriciaTree<RcRule<ME::P, A>, BTreeSet<RcRule<ME::P, A>>>,
-    i_rules: BinaryHeap<RcRule<ME::P, A>>,
-    d_rules: BinaryHeap<RcRule<ME::P, A>>,
-    default_rule: RcRule<ME::P, A>,
-    search_handle: UnsafeCell<BTreeSet<RcRule<ME::P, A>>>,
-    local_ap: UnsafeCell<FxHashMap<A, Predicate<ME::P>>>,
-}
-
-impl<'p, A, ME> FibMonitor<A, ME::P> for DefaultFibMonitor<'p, A, ME>
-where
-    A: Action<Single>,
-    ME: MatchEncoder<'p>,
-{
-    fn clear(&mut self) {
-        self.tpt.clear();
-        self.i_rules.clear();
-        self.d_rules.clear();
-        self.i_rules.push(self.default_rule.clone());
-    }
-
-    fn update<OA, T>(
-        &mut self,
-        insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
-        deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
-    ) -> InverseModel<OA, ME::P, T>
+    fn into_range_iter<R>(self, range: R) -> impl DoubleEndedIterator<Item = &'a K>
     where
-        OA: Action<T, S = A> + From<A>,
-        T: Dimension,
+        R: RangeBounds<T>;
+}
+
+impl<'a, K, T> IntoRangeIterator<'a, K, T> for &'a BTreeSet<K>
+where
+    T: Ord + ?Sized,
+    K: Borrow<T> + Ord,
+{
+    fn into_range_iter<R>(self, range: R) -> impl DoubleEndedIterator<Item = &'a K>
+    where
+        R: RangeBounds<T>,
     {
-        let firse_time = !self.i_rules.is_empty();
-        insertion.into_iter().for_each(|r| {
-            let r = Rc::new(r);
-            self.insert_tpt(r.clone());
-            self.i_rules.push(r.clone());
-        });
-        deletion.into_iter().for_each(|r| {
-            let r = Rc::new(r);
-            self.delete_tpt(&r);
-            self.d_rules.push(r.clone());
-        });
-        let im = self.refresh();
-        if firse_time {
-            self.insert_tpt(self.default_rule.clone());
-        }
-        im
+        self.range(range)
     }
 }
 
-impl<'p, A, ME> DefaultFibMonitor<'p, A, ME>
+pub trait RuleStore<A: Action<Single>, P: PredicateInner>: Default {
+    fn insert(&mut self, rule: RcRule<P, A>);
+    fn delete(&mut self, rule: &RcRule<P, A>);
+    fn clear(&mut self);
+    fn search<'a, 'b>(
+        &'a self,
+        rule: &'b RcRule<P, A>,
+    ) -> impl IntoIterator<Item = &'a RcRule<P, A>>
+           + IntoRangeIterator<'a, RcRule<P, A>, RcRule<P, A>>
+           + Clone
+    where
+        A: 'a,
+        P: 'a;
+}
+
+pub struct TPTRuleStore<A, P>
 where
     A: Action<Single>,
-    ME: MatchEncoder<'p>,
+    P: PredicateInner,
 {
-    fn insert_tpt(&mut self, rule: RcRule<ME::P, A>) {
+    #[allow(clippy::type_complexity)]
+    tpt: TernaryPatriciaTree<RcRule<P, A>, BTreeSet<RcRule<P, A>>>,
+    search_handle: UnsafeCell<BTreeSet<RcRule<P, A>>>,
+}
+
+impl<A, P> Default for TPTRuleStore<A, P>
+where
+    A: Action<Single>,
+    P: PredicateInner,
+{
+    fn default() -> Self {
+        TPTRuleStore {
+            tpt: TernaryPatriciaTree::new(constant::MAX_POS),
+            search_handle: UnsafeCell::new(BTreeSet::new()),
+        }
+    }
+}
+
+impl<A, P> RuleStore<A, P> for TPTRuleStore<A, P>
+where
+    A: Action<Single>,
+    P: PredicateInner,
+{
+    fn insert(&mut self, rule: RcRule<P, A>) {
         for mv in rule.origin.iter() {
             self.tpt.insert(rule.clone(), Segmentizer::from(*mv));
         }
     }
 
-    fn delete_tpt(&mut self, rule: &RcRule<ME::P, A>) {
+    fn delete(&mut self, rule: &RcRule<P, A>) {
         for mv in rule.origin.iter() {
             self.tpt.delete(rule, Segmentizer::from(*mv));
         }
     }
 
-    fn search_tpt(&self, rule: &RcRule<ME::P, A>) -> &BTreeSet<RcRule<ME::P, A>> {
+    fn clear(&mut self) {
+        self.tpt.clear();
+    }
+
+    fn search<'a, 'b>(
+        &'a self,
+        rule: &'b RcRule<P, A>,
+    ) -> impl IntoIterator<Item = &'a RcRule<P, A>>
+           + IntoRangeIterator<'a, RcRule<P, A>, RcRule<P, A>>
+           + Clone
+    where
+        A: 'a,
+        P: 'a,
+    {
         unsafe {
             let set = &mut *self.search_handle.get();
             set.clear();
             for mv in rule.origin.iter() {
                 set.extend(self.tpt.search(Segmentizer::from(*mv)).clone())
             }
-            set
+            &(*set)
         }
     }
+}
 
-    fn refresh<OA, T>(&mut self) -> InverseModel<OA, ME::P, T>
+// RuleMonitor is a storage of Rules in a single device.
+pub trait RuleMonitor<A: Action<Single>, P: PredicateInner> {
+    // Required methods
+    fn clear(&mut self);
+
+    // First call of update should return an inverse model of the current state.
+    // Subsequent calls should return an inverse model in the form of incremental update.
+    fn update<OA: Action<T, S = A>, T: Dimension, M: InverseModelMonoid<OA, P, T>>(
+        &mut self,
+        insertion: impl IntoIterator<Item = Rule<P, A>>,
+        deletion: impl IntoIterator<Item = Rule<P, A>>,
+    ) -> InverseModel<OA, P, T, M>;
+
+    // Provided methods
+    fn insert<OA: Action<T, S = A>, T: Dimension, M: InverseModelMonoid<OA, P, T>>(
+        &mut self,
+        insertion: impl IntoIterator<Item = Rule<P, A>>,
+    ) -> InverseModel<OA, P, T, M> {
+        self.update(insertion, vec![])
+    }
+
+    fn delete<OA: Action<T, S = A>, T: Dimension, M: InverseModelMonoid<OA, P, T>>(
+        &mut self,
+        deletion: impl IntoIterator<Item = Rule<P, A>>,
+    ) -> InverseModel<OA, P, T, M> {
+        self.update(vec![], deletion)
+    }
+}
+
+/// Fast FIB Monitor
+///
+/// Fast FIB Monitor functions as FIB storage of a forwarding device. A monitor has methods to
+/// insert and delete FIB rules, and output an inverse model of the current forwarding state.
+///
+/// Generic parameters:
+/// - `A`: Action<Single> type, which is used to represent the action of a FIB rule.
+/// - `ME`: MatchEncoder type, which is used provide default "match any packet" predicate for
+///   the default rule..
+pub struct FastRuleMonitor<'p, A, ME, RS>
+where
+    A: Action<Single>,
+    ME: MatchEncoder<'p>,
+    RS: RuleStore<A, ME::P>,
+{
+    engine: &'p ME,
+    i_rules: BinaryHeap<RcRule<ME::P, A>>,
+    d_rules: BinaryHeap<RcRule<ME::P, A>>,
+    default_rule: RcRule<ME::P, A>,
+    local_ap: UnsafeCell<FxHashMap<A, Predicate<ME::P>>>,
+
+    store: RS,
+}
+
+impl<'p, A, ME, RS> RuleMonitor<A, ME::P> for FastRuleMonitor<'p, A, ME, RS>
+where
+    A: Action<Single>,
+    ME: MatchEncoder<'p>,
+    RS: RuleStore<A, ME::P>,
+{
+    fn clear(&mut self) {
+        self.store.clear();
+        self.i_rules.clear();
+        self.d_rules.clear();
+        self.i_rules.push(self.default_rule.clone());
+    }
+
+    fn update<OA, T, M>(
+        &mut self,
+        insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
+        deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
+    ) -> InverseModel<OA, ME::P, T, M>
     where
-        OA: Action<T, S = A> + From<A> + From<A>,
+        OA: Action<T, S = A>,
         T: Dimension,
+        M: InverseModelMonoid<OA, ME::P, T>,
+    {
+        let firse_time = !self.i_rules.is_empty();
+        insertion.into_iter().for_each(|r| {
+            let r = Rc::new(r);
+            self.store.insert(r.clone());
+            self.i_rules.push(r.clone());
+        });
+        deletion.into_iter().for_each(|r| {
+            let r = Rc::new(r);
+            self.store.delete(&r);
+            self.d_rules.push(r.clone());
+        });
+        let im = self.refresh();
+        if firse_time {
+            self.store.insert(self.default_rule.clone());
+        }
+        im
+    }
+}
+
+impl<'p, A, ME, RS> FastRuleMonitor<'p, A, ME, RS>
+where
+    A: Action<Single>,
+    ME: MatchEncoder<'p>,
+    RS: RuleStore<A, ME::P>,
+{
+    fn refresh<OA, T, M>(&mut self) -> InverseModel<OA, ME::P, T, M>
+    where
+        OA: Action<T, S = A>,
+        T: Dimension,
+        M: InverseModelMonoid<OA, ME::P, T>,
     {
         unsafe { (*self.local_ap.get()).clear() };
         let mut no_overwrite = self.engine.one();
         while let Some(r) = self.i_rules.pop() {
             let mut eff = r.predicate.clone();
-            let related = self.search_tpt(&r);
+            let related = self.store.search(&r);
             // effective predicate minus all higher priority predicates
-            for y in related.range((Bound::Excluded(r.clone()), Bound::Unbounded)) {
+            for y in related
+                .clone()
+                .into_range_iter((Bound::Excluded(r.clone()), Bound::Unbounded))
+            {
                 eff -= &y.predicate;
                 if eff.is_empty() {
                     break;
@@ -133,10 +252,13 @@ where
         }
 
         while let Some(r) = self.d_rules.pop() {
-            let related = self.search_tpt(&r);
+            let related = self.store.search(&r);
             let mut to_divide = r.predicate.clone();
             // to_divide minus all higher priority predicates
-            for y in related.range((Bound::Excluded(r.clone()), Bound::Unbounded)) {
+            for y in related
+                .clone()
+                .into_range_iter((Bound::Excluded(r.clone()), Bound::Unbounded))
+            {
                 to_divide -= &y.predicate;
                 if to_divide.is_empty() {
                     break;
@@ -146,7 +268,8 @@ where
             // rules (variable y below) that are lower priority than it will be revealed
             while !to_divide.is_empty() {
                 for y in related
-                    .range((Bound::Unbounded, Bound::Included(r.clone())))
+                    .clone()
+                    .into_range_iter((Bound::Unbounded, Bound::Included(r.clone())))
                     .rev()
                 {
                     let eff = &y.predicate & &to_divide;
@@ -183,31 +306,25 @@ where
             predicate: engine.one(),
             origin: vec![MaskedValue::default()],
         });
-        let tpt = TernaryPatriciaTree::new(constant::MAX_POS);
-        let i_rules = BinaryHeap::from([drop_rule.clone()]);
-        let d_rules = BinaryHeap::new();
         let local_ap = HashMap::with_hasher(FxBuildHasher::default());
-        DefaultFibMonitor {
+        FastRuleMonitor {
             engine,
-            tpt,
-            i_rules,
-            d_rules,
+            i_rules: BinaryHeap::from([drop_rule.clone()]),
+            d_rules: BinaryHeap::new(),
             default_rule: drop_rule,
             local_ap: UnsafeCell::new(local_ap),
-            search_handle: UnsafeCell::new(BTreeSet::new()),
+            store: RS::default(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rapimt_core::prelude::{
-        seq_action::SeqActions, Multiple, Single,RuddyPredicateEngine,
-    };
+    use fxhash::FxHashMap;
+    use rapimt_core::prelude::{seq_action::SeqActions, RuddyPredicateEngine};
     use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
-    use crate::FibMonitor;
-    use crate::{monitor::DefaultFibMonitor, InverseModel};
+    use super::*;
 
     #[test]
     fn test_default_fib_monitor() {
@@ -234,54 +351,24 @@ mod tests {
         let (_, fibs) = FibLoader::<usize>::load(&codex, &engine, fib).unwrap();
 
         // setup fib monitor
-        let mut fib_monitor = DefaultFibMonitor::new(&engine);
+        let mut fib_monitor = FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine);
 
         // two rules as an incremental update
         // im should have three entries: one default "drop", one 0.0.0.0/1 and one "192.168.1.0/24"
-        let im = fib_monitor.insert::<SeqActions<usize, 1>, Multiple>(fibs.clone());
+        let im = fib_monitor.insert::<_, _, FxHashMap<usize, _>>(fibs.clone());
         assert_eq!(im.len(), 3);
 
         fib_monitor.clear();
-        let im = fib_monitor.insert::<usize, Single>(fibs);
+        let im = fib_monitor.insert::<_, _, FxHashMap<usize, _>>(fibs);
         assert_eq!(im.len(), 3);
 
-        let im = InverseModel::<SeqActions<usize, 1>, _, Multiple>::from(im);
+        let im = InverseModel::<_, _, _, FxHashMap<SeqActions<usize, 1>, _>>::from(im);
         assert_eq!(im.len(), 3);
 
         // load fib rules and encode action to TypedAction with codex, run the same as above
         let (_, fibs) = FibLoader::<TypedAction>::load(&codex, &engine, fib).unwrap();
-        let mut fib_monitor = DefaultFibMonitor::new(&engine);
-        let im = fib_monitor.insert::<TypedAction, Single>(fibs);
+        let mut fib_monitor = FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine);
+        let im = fib_monitor.insert::<_, _, FxHashMap<TypedAction, _>>(fibs);
         assert_eq!(im.len(), 3);
     }
-
-    // #[test]
-    // fn test_bbrb_stanford() {
-    //     let spec = std::fs::read_to_string("examples/stanford/spec/bbrb_rtr.spec").unwrap();
-    //     let fib = std::fs::read_to_string("examples/stanford/fib/bbrb_rtr.fib").unwrap();
-    //
-    //     let loader = DefaultInstLoader::default();
-    //     let codex = InstanceLoader::load(&loader, &spec).unwrap();
-    //
-    //     // load fibs
-    //     let family = MatchFamily::Inet4Family;
-    //     let engine = RuddyPredicateEngine::init(100, 10, family);
-    //
-    //     // load fib rules and encode action to usize with codex
-    //     let (_, fibs) = FibLoader::<usize>::load(&codex, &engine, &fib).unwrap();
-    //
-    //     // setup fib monitor
-    //     let mut fib_monitor = DefaultFibMonitor::new(&engine);
-    //     let bbrb_rtr_im = fib_monitor.insert::<SeqActions<usize, 1>, Multiple>(fibs);
-    //
-    //     for (a, p) in bbrb_rtr_im.iter() {
-    //         let coded_action = a[0];
-    //         let action = codex.decode(coded_action);
-    //         println!("{:?}", action);
-    //         if let TypedAction::NonOverwrite = action {
-    //             println!("{:?}", p);
-    //         }
-    //     }
-    //     println!("bbrb inverse model size: {:?}", bbrb_rtr_im.len());
-    // }
 }

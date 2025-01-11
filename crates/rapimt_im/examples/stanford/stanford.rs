@@ -1,11 +1,8 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use fxhash::FxHashMap;
-use rapimt_core::{
-    action::{seq_action::SeqActions, Multiple},
-    r#match::engine::RuddyPredicateEngine,
-};
-use rapimt_im::prelude::{DefaultFibMonitor, FibMonitor, InverseModel};
+use rapimt_core::{action::seq_action::SeqActions, r#match::engine::RuddyPredicateEngine};
+use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitor, TPTRuleStore};
 use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, PortInfoBase};
 
 fn main() {
@@ -30,9 +27,9 @@ fn main() {
     }
 
     // create monitors
-    let mut monitors = FxHashMap::<String, DefaultFibMonitor<_, _>>::default();
+    let mut monitors = FxHashMap::<String, FastRuleMonitor<_, _, TPTRuleStore<_, _>>>::default();
     for dev in codexs.keys() {
-        monitors.insert(dev.clone(), DefaultFibMonitor::new(&engine));
+        monitors.insert(dev.clone(), FastRuleMonitor::new(&engine));
     }
 
     let mut monitor_timer = 0u128;
@@ -49,15 +46,15 @@ fn main() {
         let im_update = monitors
             .get_mut(d)
             .unwrap()
-            .insert::<SeqActions<usize, 16>, Multiple>(fibs);
+            .insert::<_, _, FxHashMap<SeqActions<usize, 16>, _>>(fibs);
         monitor_timer += _timer.elapsed().unwrap().as_nanos();
         im_updates.insert(d.clone(), im_update);
     }
 
     // merge inverse models into one big network model
-    for (d, mut im_update) in im_updates {
+    for (d, im_update) in im_updates {
         let idx = devs.iter().position(|x| *x == d).unwrap();
-        im_update.resize(devs.len(), idx);
+        let im_update = InverseModel::resize(im_update, devs.len(), idx);
         let _timer = SystemTime::now();
         im <<= im_update;
         im_timer += _timer.elapsed().unwrap().as_nanos();
@@ -65,6 +62,6 @@ fn main() {
     println!("Monitor refresh time: {} us", monitor_timer / 1000);
     println!("Inverse model << time: {} us", im_timer / 1000);
 
-    // the number of equivalent classes in this stanford dataset is 155 (verified by a ton of debugging)
+    // the number of equivalent classes in this stanford dataset is 155
     assert_eq!(im.len(), 155)
 }
