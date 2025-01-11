@@ -11,5 +11,6 @@ nom = { workspace = true }
 indexmap = { workspace = true }
 num_enum = { workspace = true }
 rapimt_core = { path = "../rapimt_core" }
+funty = "2.0.0"
 pest = "2.6"
 pest_derive = "2.6"

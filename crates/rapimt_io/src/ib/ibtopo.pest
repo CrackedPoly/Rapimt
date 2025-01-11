@@ -1,0 +1,47 @@
+heading_comment = @{ "#" ~ (!"\n" ~ ASCII)* }
+WHITESPACE      = _{ " " | "\t" | NEWLINE }
+
+hex_bare_ident  = ${ ASCII_HEX_DIGIT+ }
+hex_ident       = ${ "0x" ~ hex_bare_ident }
+desc_str        = ${ (!"\"" ~ ASCII)+ }
+digit_ident     = ${ ASCII_DIGIT+ }
+node_name_ident = ${ ("S" | "H") ~ "-" ~ ASCII_HEX_DIGIT+ }
+
+port_src_node_ident = { hex_bare_ident }
+port_dst_node_ident = { hex_bare_ident }
+node_hex_ident      = { hex_ident }
+port_hex_ident      = { hex_bare_ident }
+
+port_id     = { "[" ~ digit_ident ~ "]" }
+port_num    = { digit_ident }
+port_width  = { digit_ident }
+src_port_id = { port_id }
+dst_port_id = { port_id }
+
+node_name  = ${ "\"" ~ node_name_ident ~ "\"" }
+desc       =  { "#" ~ (desc_str)? ~ "\"" ~ desc_str ~ "\"" }
+base_port  =  { "base port" ~ digit_ident }
+lid        =  { "lid" ~ digit_ident }
+lmc        =  { "lmc" ~ digit_ident }
+speedunit  =  { "SRD" | "DDR" | "QDR" | "FDR" | "EDR" | "HDR" | "NDR" }
+widthspeed = ${ port_width ~ "x" ~ speedunit }
+
+vendid_stat     = { "vendid=" ~ hex_ident }
+devid_stat      = { "devid=" ~ hex_ident }
+sysimgguid_stat = { "sysimgguid=" ~ hex_ident }
+link_spec       = {
+    src_port_id ~ ("(" ~ port_src_node_ident ~ ")")? ~ node_name ~ dst_port_id ~ ("(" ~ port_dst_node_ident ~ ")")? ~ desc? ~ lid ~ widthspeed
+}
+
+switchguid_stat = { "switchguid=" ~ node_hex_ident ~ "(" ~ port_hex_ident ~ ")" }
+switch_meta     = { "Switch" ~ port_num ~ node_name ~ desc? ~ base_port ~ lid ~ lmc }
+
+caguid_stat = { "caguid=" ~ node_hex_ident }
+ca_meta     = { "Ca" ~ port_num ~ node_name ~ desc? }
+
+switch_spec = { vendid_stat ~ devid_stat ~ sysimgguid_stat ~ switchguid_stat ~ switch_meta ~ link_spec* }
+ca_spec     = { vendid_stat ~ devid_stat ~ sysimgguid_stat ~ caguid_stat ~ ca_meta ~ link_spec* }
+
+topo = { switch_spec | ca_spec }
+
+file = { SOI ~ heading_comment* ~ (switch_spec | ca_spec)* ~ EOI }
