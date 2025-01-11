@@ -1,4 +1,4 @@
-//! This module provides FIB monitor and Inverse Model utilities.
+//! InverseModel operations and rule to InverseModel conversion.
 //! TODO::This module needs to be documented.
 mod im;
 mod monitor;

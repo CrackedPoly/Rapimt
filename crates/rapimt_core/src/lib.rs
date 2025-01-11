@@ -1,4 +1,4 @@
-//! This module provides action encoding/decoding and action matching utilities.
+//! Action encoding and decoding, and match encoding.
 pub mod action;
 pub mod r#match;
 

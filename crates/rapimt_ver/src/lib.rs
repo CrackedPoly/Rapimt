@@ -1,4 +1,4 @@
-//! Defines Verification traits and implementations.
+//! Verification traits and implementations.
 use rapimt_core::prelude::{Predicate, PredicateInner};
 
 pub trait Invariant {

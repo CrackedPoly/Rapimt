@@ -4,7 +4,7 @@
 //!
 //! An action in the system is initially an `UncodedAction` that contains rich information about
 //! the action in a specific component. It is then encoded by an `ActionEncoder` into a
-//! `CodedAction` with an explanation of the action type. The CodedAction is opaque 
+//! `CodedAction` with an explanation of the action type.
 //!
 //!
 //! ```text

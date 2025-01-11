@@ -1,6 +1,4 @@
-//! This module provides basic parsing from the default format. (.fib for FIB rules and .spec for
-//! topology instances)
-//! TODO::This module needs to be documented.
+//! Parse topology and rules from diverse sources.
 pub mod default;
 pub mod ib;
 
