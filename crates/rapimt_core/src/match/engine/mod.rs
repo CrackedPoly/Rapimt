@@ -13,7 +13,9 @@ use crate::r#match::family::{constant, FamilyDecl};
 use funty::Unsigned;
 
 mod ruddy_engine;
+mod oxidd_engine;
 pub use ruddy_engine::{RuddyPredicate, RuddyPredicateEngine};
+pub use oxidd_engine::{OxiddPredicate, OxiddPredicateEngine};
 
 /// MatchEncoder parses field values and encodes them into predicates.
 pub trait MatchEncoder<'a>
