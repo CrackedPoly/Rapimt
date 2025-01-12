@@ -17,8 +17,7 @@ use crate::r#match::{
     engine::{MatchEncoder, PredicateEngine},
 };
 
-/// The RuddyPredicateEngine is a predicate engine based on the
-/// [Ruddy](https://github.com/CrackedPoly/RuDDy) BDD library.
+/// A predicate engine based on the [Ruddy](https://github.com/CrackedPoly/RuDDy) library.
 pub struct RuddyPredicateEngine {
     pub manager: RefCell<Ruddy>,
     var_pair: [(Bdd, Bdd); constant::MAX_POS + 1],
@@ -379,6 +378,7 @@ impl<'a> PredicateEngine<'a> for RuddyPredicateEngine {
     }
 }
 
+/// Companion struct of [RuddyPredicateEngine].
 #[derive(Copy, Clone)]
 pub struct RuddyPredicate<'a> {
     pub bdd: Bdd,

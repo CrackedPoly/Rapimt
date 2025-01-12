@@ -24,13 +24,24 @@ RuDDy = { git = "https://github.com/CrackedPoly/RuDDy.git", features = [
 
 [dependencies]
 rapimt_internal = { path = "crates/rapimt_internal" }
+document-features = "0.2"
 
 [features]
 default = ["dip"]
+
+## Support encoding 32-bit destination IPv4 addresses
 dip = ["rapimt_internal/dip"]
+
+## Support encoding 32-bit source IPv4 addresses
 sip = ["rapimt_internal/sip"]
+
+## Support encoding 16-bit destination port numbers
 dport = ["rapimt_internal/dport"]
+
+## Support encoding 16-bit source port numbers
 sport = ["rapimt_internal/sport"]
+
+## Support encoding 8-bit VLAN tags
 tag = ["rapimt_internal/tag"]
 
 [[bin]]

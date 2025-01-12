@@ -10,6 +10,7 @@ use rapimt_core::prelude::{
     Action, Actions, Dimension, Multiple, Predicate, PredicateInner, Single,
 };
 
+/// A monoid defined on the overwrite operator.
 pub trait InverseModelMonoid<A: Action<T>, P: PredicateInner, T: Dimension>:
     Default + Clone + IntoIterator<Item = (A, Predicate<P>)> + FromIterator<(A, Predicate<P>)>
 {
@@ -118,6 +119,7 @@ where
     }
 }
 
+/// Invserse Model maps actions to predicates.
 #[derive(Debug)]
 pub struct InverseModel<
     A: Action<T>,

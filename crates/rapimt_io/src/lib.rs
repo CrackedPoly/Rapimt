@@ -2,9 +2,14 @@
 pub mod default;
 pub mod ib;
 
-
 #[allow(missing_docs)]
 pub mod prelude {
     #[doc(hidden)]
-    pub use crate::default::{FibLoader, InstanceLoader, loader::{PortInfoBase, DefaultInstLoader, TypedAction}};
+    pub use crate::{
+        default::{
+            loader::{DefaultInstLoader, PortInfoBase, TypedAction},
+            FibLoader, InstanceLoader,
+        },
+        ib,
+    };
 }

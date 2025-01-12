@@ -8,8 +8,7 @@ use funty::Unsigned;
 
 use crate::r#match::family::constant;
 
-/// Match is a match condition for a field.
-/// No field should exceed 128 bits for now, so u128 should be adequate.
+/// Match condition for a field.
 #[derive(Copy, Clone, Debug)]
 pub enum Match<U: Unsigned> {
     ExactMatch { value: U },
@@ -24,11 +23,10 @@ pub struct FieldMatch<'a, U: Unsigned> {
     pub cond: Match<U>,
 }
 
-/// MaskedValue is ternary bit string representing an entire header match. Bits are stored in
-/// little-endian. For example, fields declared as "tag: 0-16, dip: 16-32" encodes
-/// dip=192.168.0.0/24, tag=2 as
+/// Ternary bit string representing an entire header match. 
 ///
-/// `0100000000000000*******000000000001010100000011`
+/// Bits are stored in little-endian. For example, fields declared as "tag: 0-16, dip: 16-32"
+/// encodes dip=192.168.0.0/24, tag=2 as `0100000000000000*******000000000001010100000011`.
 #[derive(Eq, PartialEq, Hash, Default, Clone, Copy)]
 pub struct MaskedValue {
     pub value:

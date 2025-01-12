@@ -104,6 +104,7 @@ impl Debug for TypedActionInner<'_> {
     }
 }
 
+/// Typed, unencoded forwarding action.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TypedAction<'a> {
     Typed(TypedActionInner<'a>),
@@ -178,9 +179,6 @@ impl<'a> UncodedAction for TypedAction<'a> {
 }
 
 /// [PortInfoBase] stores the information of a device's ports and neighbors.
-///
-/// Lifetime 'a is used to sync the lifetime of [PortInfo] and [NeighborInfo], bacause [PortInfo]
-/// stores references to data inside [NeighborInfo] to avoid duplication.
 #[derive(Debug)]
 pub struct PortInfoBase {
     #[allow(dead_code)]

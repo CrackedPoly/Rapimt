@@ -1,7 +1,6 @@
-//! InverseModel operations and rule to InverseModel conversion.
-//! TODO::This module needs to be documented.
-mod im;
-mod monitor;
+//! InverseModel operations and generations.
+pub mod im;
+pub mod monitor;
 
 #[allow(missing_docs)]
 pub mod prelude {

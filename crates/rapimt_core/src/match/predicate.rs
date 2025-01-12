@@ -4,7 +4,7 @@ use std::{
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign},
 };
 
-/// Inner representation of a predicate.
+/// Inner trait for [Predicate].
 pub trait PredicateInner:
     Clone + Eq + PartialEq + Ord + PartialOrd + Hash + Display + Debug
 {
@@ -17,8 +17,8 @@ pub trait PredicateInner:
     fn _deref(&self);
 }
 
-/// Predicate is a logical condition that can be used to represent packer filter.
-/// # Predicate
+/// An [Predicate] is a logical condition that represents a header space.
+///
 /// ## Methods
 /// - [!] : logical NOT
 /// - [&] : logical AND
@@ -26,6 +26,7 @@ pub trait PredicateInner:
 /// - [-] : logical DIFF
 /// - [==] : equality
 /// - [is_empty] : check if the predicate is empty
+///
 /// ## Operations explained
 /// Predicate hide reference counting inside, it is coherent with the Rust ownership model. When a
 /// predicate is moved, it is de-referenced automatically and the underlying data structure (like
@@ -35,6 +36,7 @@ pub trait PredicateInner:
 /// ### Unary operation has two forms
 /// - `let b = !a`: `a` is moved
 /// - `let b = !&a`: `a` is NOT moved
+///
 /// ### Binary operations have three forms
 /// `&`, `|`, `-` have the same forms. Take `&` for example:
 /// - `let c = a & b`: `a` and `b` are moved
@@ -42,6 +44,7 @@ pub trait PredicateInner:
 /// - `let c = &a & b`: none is moved
 /// - `let a &= b`: `a` is mutated and `b` is moved
 /// - `let a &= &b`: `a` is mutated
+///
 /// # Examples
 /// This example demonstrates how to use the `&` and `&=` like methods.
 /// ```no_run

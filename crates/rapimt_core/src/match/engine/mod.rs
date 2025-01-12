@@ -17,7 +17,7 @@ mod oxidd_engine;
 pub use ruddy_engine::{RuddyPredicate, RuddyPredicateEngine};
 pub use oxidd_engine::{OxiddPredicate, OxiddPredicateEngine};
 
-/// MatchEncoder parses field values and encodes them into predicates.
+/// Parse field values and encodes them into a predicate.
 pub trait MatchEncoder<'a>
 where
     Self: 'a,
@@ -154,9 +154,10 @@ where
     }
 }
 
-/// PredicateEngine is a extended trait of MatchEncoder, which additionally enables serialization
-/// and deserialization of a predicate. It is useful when local storing or remote transmitting
-/// predicates.
+/// An extended trait of MatchEncoder, which additionally enables serialization and deserialization
+/// of a predicate. 
+///
+/// It is useful when local storing or remote transmitting predicates.
 pub trait PredicateEngine<'a>: MatchEncoder<'a> {
     /// Deserialize a predicate according to the buffer.
     fn read_buffer(&'a self, buffer: &[u8]) -> Result<Predicate<Self::P>>;
