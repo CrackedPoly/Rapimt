@@ -72,15 +72,16 @@ impl Dimension for Single {}
 /// - drop_action: return an action that represents drop.
 /// - no_overwrite: return an action that represents no action overwrite in Fast-IMT theory.
 /// - overwritten: return an action that represents the overwrite of self by rhs.
-pub trait Action<T: Dimension>: From<Self::S> + Eq + Hash + Clone + Debug {
+pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
     // What single form of action it contains. For structs that implements Action<Single>, it must
     // be itself, while for Action<Multiple> structs, it should define one.
     type S: Action<Single>;
 
-    fn drop_action() -> Self;
+    fn default_action() -> Self;
     fn no_overwrite() -> Self;
     fn overwrite(&self, rhs: &Self) -> Self;
     fn overwrite_(&mut self, rhs: &Self);
+    fn from_single(single: Self::S) -> Self;
 }
 
 /// UncodedAction is an action on a specific device, it should have rich information such as device
@@ -95,9 +96,9 @@ pub trait UncodedAction: Action<Single> + Clone {
 
 /// CodedAction should have fixed size and should live in the stack to achieve better performance.
 /// [Default] trait implementation default() is expected to return a value that represents no
-/// action overwrite, refer to Fast-IMT theory for more information.
+/// action overwrite, refer to Fast-IMT theory for more information. 
 ///
-/// ***It seems an integer is sufficient, but we leave this trait for flexibility***
+/// CodedAction should be opaque.
 pub trait CodedAction:
     Action<Single>
     + Eq
@@ -120,7 +121,7 @@ macro_rules! impl_coded_action_for_ints {
             impl Action<Single> for $t {
                 type S = Self;
                 #[inline]
-                fn drop_action() -> Self {
+                fn default_action() -> Self {
                     1 as Self
                 }
                 #[inline]
@@ -140,6 +141,10 @@ macro_rules! impl_coded_action_for_ints {
                     if *rhs != 0 {
                         *self = *rhs;
                     }
+                }
+                #[inline]
+                fn from_single(single: Self::S) -> Self {
+                    single
                 }
             }
             impl CodedAction for $t {}
@@ -165,7 +170,8 @@ where
     fn lookup(&'a self, port_name: &str) -> Option<Self::UA>;
 }
 
-pub trait CodedActions:
+/// Actions container trait.
+pub trait Actions: 
     Action<Multiple>
     + Index<usize, Output = <Self as Action<Multiple>>::S>      // read by idx
     + IndexMut<usize, Output = <Self as Action<Multiple>>::S>   // update by idx in-place
@@ -173,10 +179,6 @@ pub trait CodedActions:
     + Hash
     + Eq
 {
-    // A is Self::S
-    type A: CodedAction;
-    const N: usize;
-
     // Required methods
     fn len(&self) -> usize;
     fn resize_(&mut self, to: usize, offset: usize);

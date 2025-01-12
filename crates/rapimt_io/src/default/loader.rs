@@ -128,7 +128,7 @@ impl Hash for TypedActionInner<'_> {
 impl<'a> Action<Single> for TypedAction<'a> {
     type S = Self;
 
-    fn drop_action() -> Self {
+    fn default_action() -> Self {
         TypedAction::Drop
     }
 
@@ -148,6 +148,10 @@ impl<'a> Action<Single> for TypedAction<'a> {
             TypedAction::NonOverwrite => {},
             _ => *self = *rhs,
         }
+    }
+
+    fn from_single(single: Self::S) -> Self {
+        single
     }
 }
 

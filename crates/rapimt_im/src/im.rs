@@ -7,7 +7,7 @@ use std::{
 };
 
 use rapimt_core::prelude::{
-    Action, CodedActions, Dimension, Multiple, Predicate, PredicateInner, Single,
+    Action, Actions, Dimension, Multiple, Predicate, PredicateInner, Single,
 };
 
 pub trait InverseModelMonoid<A: Action<T>, P: PredicateInner, T: Dimension>:
@@ -202,14 +202,18 @@ where
 
 impl<A, P, M, N> From<InverseModel<A::S, P, Single, M>> for InverseModel<A, P, Multiple, N>
 where
-    A: CodedActions,
+    A: Actions,
     P: PredicateInner,
     M: InverseModelMonoid<A::S, P, Single>,
     N: InverseModelMonoid<A, P, Multiple>,
 {
     fn from(value: InverseModel<A::S, P, Single, M>) -> Self {
         Self(
-            value.0.into_iter().map(|(a, p)| (A::from(a), p)).collect(),
+            value
+                .0
+                .into_iter()
+                .map(|(a, p)| (A::from_single(a), p))
+                .collect(),
             PhantomData,
         )
     }
@@ -217,7 +221,7 @@ where
 
 impl<A, P, M> InverseModel<A, P, Multiple, M>
 where
-    A: CodedActions,
+    A: Actions,
     P: PredicateInner,
     M: InverseModelMonoid<A, P, Multiple>,
 {

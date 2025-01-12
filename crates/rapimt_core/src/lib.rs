@@ -9,8 +9,7 @@ pub mod prelude {
         action::{
             fwd::FwdActionType,
             acl::AclActionType,
-            seq_action::SeqActions, 
-            Action, ActionEncoder, CodedAction, CodedActions, Dimension, Multiple, Single, UncodedAction,
+            Action, ActionEncoder, UncodedAction, CodedAction, Dimension, Multiple, Single, Actions
         },
         r#match::{
             family::{constant, MatchFamily},

@@ -303,7 +303,7 @@ where
         InverseModel::from(
             unsafe { &mut *self.local_ap.get() }
                 .drain()
-                .map(|(a, p)| (OA::from(a.clone()), p.clone())),
+                .map(|(a, p)| (OA::from_single(a.clone()), p.clone())),
         )
     }
 
@@ -311,7 +311,7 @@ where
         // this is the default rule of every forwarding device
         let drop_rule = Rc::new(Rule {
             priority: -1,
-            action: A::drop_action(),
+            action: A::default_action(),
             predicate: engine.one(),
             origin: vec![MaskedValue::default()],
         });
@@ -330,7 +330,7 @@ where
 #[cfg(test)]
 mod tests {
     use fxhash::FxHashMap;
-    use rapimt_core::prelude::{SeqActions, RuddyPredicateEngine};
+    use rapimt_core::prelude::RuddyPredicateEngine;
     use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
     use super::*;
@@ -371,7 +371,7 @@ mod tests {
         let im = fib_monitor.insert::<_, _, FxHashMap<usize, _>>(fibs);
         assert_eq!(im.len(), 3);
 
-        let im = InverseModel::<_, _, _, FxHashMap<SeqActions<usize, 1>, _>>::from(im);
+        let im = InverseModel::<_, _, _, FxHashMap<Vec<usize>, _>>::from(im);
         assert_eq!(im.len(), 3);
 
         // load fib rules and encode action to TypedAction with codex, run the same as above

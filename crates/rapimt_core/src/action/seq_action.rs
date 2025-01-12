@@ -1,113 +1,74 @@
-use std::{
-    hash::Hash,
-    ops::{Index, IndexMut},
-};
+use crate::action::Actions;
 
-use crate::action::{CodedAction, CodedActions};
+use super::{Action, Multiple, Single};
 
-use super::{Action, Multiple};
-
-/// A sequence of actions stored in Vec. Const generic `N` is the hint capacity of the Vec, which
-/// is usually the network size.
-#[derive(Eq, PartialEq, Hash, Clone, Debug, Default)]
-pub struct SeqActions<A: CodedAction, const N: usize>(Vec<A>);
-
-impl<A: CodedAction, const N: usize> Action<Multiple> for SeqActions<A, N> {
+impl<A: Action<Single>> Action<Multiple> for Vec<A> {
     type S = A;
 
     #[inline]
-    fn drop_action() -> Self {
-        let mut v = Vec::with_capacity(N);
-        v.push(A::drop_action());
-        SeqActions(v)
+    fn default_action() -> Self {
+        vec![A::default_action()]
     }
 
     #[inline]
     fn no_overwrite() -> Self {
-        let mut v = Vec::with_capacity(N);
-        v.push(A::no_overwrite());
-        SeqActions(v)
+        vec![A::no_overwrite()]
     }
 
     #[inline]
     fn overwrite(&self, rhs: &Self) -> Self {
-        debug_assert_eq!(self.0.len(), rhs.0.len());
-        let n_dim = self.0.len();
-        let mut new_actions = Vec::with_capacity(self.0.capacity());
+        debug_assert_eq!(self.len(), rhs.len());
+        let n_dim = self.len();
+        let mut new_actions = Vec::with_capacity(self.capacity());
         for i in 0..n_dim {
-            if rhs[i] != A::default() {
-                new_actions.push(rhs[i]);
+            if rhs[i] != A::no_overwrite() {
+                new_actions.push(rhs[i].clone());
             } else {
-                new_actions.push(self[i]);
+                new_actions.push(self[i].clone());
             }
         }
-        SeqActions(new_actions)
+        new_actions
     }
 
     #[inline]
     fn overwrite_(&mut self, rhs: &Self) {
-        debug_assert_eq!(self.0.len(), rhs.0.len());
-        let n_dim = self.0.len();
+        debug_assert_eq!(self.len(), rhs.len());
+        let n_dim = self.len();
         for i in 0..n_dim {
-            if rhs[i] != A::default() {
-                self[i] = rhs[i];
+            if rhs[i] != A::no_overwrite() {
+                self[i] = rhs[i].clone();
             }
         }
     }
-}
 
-impl<A: CodedAction, const N: usize> From<A> for SeqActions<A, N> {
     #[inline]
-    fn from(value: A) -> Self {
-        let mut v = Vec::with_capacity(N);
-        v.push(value);
-        SeqActions(v)
+    fn from_single(single: Self::S) -> Self {
+        vec![single]
     }
 }
 
-impl<A: CodedAction, const N: usize> Index<usize> for SeqActions<A, N> {
-    type Output = A;
-
-    #[inline]
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl<A: CodedAction, const N: usize> IndexMut<usize> for SeqActions<A, N> {
-    #[inline]
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
-
-impl<A: CodedAction, const N: usize> CodedActions for SeqActions<A, N> {
-    type A = A;
-    const N: usize = N;
-
-    #[inline]
+impl<A: Action<Single> + Copy> Actions for Vec<A> {
     fn len(&self) -> usize {
-        self.0.len()
+        self.len()
     }
 
-    // resize the Actions in-place
     fn resize_(&mut self, to: usize, offset: usize) {
-        let n_dim = self.0.len();
-        if to > self.0.capacity() {
-            self.0.reserve(to - n_dim);
+        let n_dim = self.len();
+        if to > self.capacity() {
+            self.reserve(to - n_dim);
         }
         if to > n_dim {
-            self.0.resize(to, A::default());
+            self.resize(to, A::no_overwrite());
         }
         if offset > 0 {
-            self.0.copy_within(0..n_dim, offset);
-            self.0[..offset].fill(A::default());
+            self.copy_within(0..n_dim, offset);
+            self[..offset].fill(A::no_overwrite());
         }
     }
 
     fn diff(&self, rhs: &Self) -> usize {
-        debug_assert_eq!(self.0.len(), rhs.0.len());
-        let n_dim = self.0.len();
+        debug_assert_eq!(self.len(), rhs.len());
+        let n_dim = self.len();
         let mut diff: usize = 0;
         for i in 0..n_dim {
             if self[i] != rhs[i] {
@@ -118,60 +79,52 @@ impl<A: CodedAction, const N: usize> CodedActions for SeqActions<A, N> {
     }
 }
 
-impl<A: CodedAction, const N: usize> From<&[A; N]> for SeqActions<A, N> {
-    fn from(value: &[A; N]) -> Self {
-        let mut v = Vec::with_capacity(N);
-        v.extend_from_slice(value);
-        SeqActions(v)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_seq_actions_get() {
-        let b = SeqActions::from(&[1, 2, 3]);
+        let b = Vec::from(&[1, 2, 3]);
         assert_eq!(b[2], 3);
     }
 
     #[test]
     fn test_seq_actions_resize() {
-        let mut a = SeqActions::from(&[1]);
+        let mut a = Vec::from(&[1]);
         a.resize_(3, 2);
         assert_eq!(a[1], 0);
         assert_eq!(a[2], 1);
-        let mut b = SeqActions::from(&[1, 2, 3]);
+        let mut b = Vec::from(&[1, 2, 3]);
         b.resize_(2, 0);
         assert_eq!(b[1], 2);
     }
 
     #[test]
     fn test_seq_actions_update() {
-        let mut c = SeqActions::from(&[1, 2, 3]);
+        let mut c = Vec::from(&[1, 2, 3]);
         c[2] = 4;
         assert_eq!(c[2], 4);
     }
 
     #[test]
     fn test_seq_actions_diff() {
-        let a = SeqActions::from(&[1]);
-        let b = SeqActions::from(&[2]);
+        let a = Vec::from(&[1]);
+        let b = Vec::from(&[2]);
         assert_eq!(a.diff(&b), 1);
-        let c = SeqActions::from(&[1, 2, 3]);
-        let d = SeqActions::from(&[1, 3, 4]);
+        let c = Vec::from(&[1, 2, 3]);
+        let d = Vec::from(&[1, 3, 4]);
         assert_eq!(c.diff(&d), 2);
     }
 
     #[test]
     fn test_seq_actions_overwrite() {
-        let a = SeqActions::from(&[1]);
-        let b = SeqActions::from(&[2]);
+        let a = Vec::from(&[1]);
+        let b = Vec::from(&[2]);
         let a = a.overwrite(&b);
         assert_eq!(a[0], 2);
-        let c = SeqActions::from(&[1, 2, 3]);
-        let d = SeqActions::from(&[1, 0, 4]);
+        let c = Vec::from(&[1, 2, 3]);
+        let d = Vec::from(&[1, 0, 4]);
         let c = c.overwrite(&d);
         assert_eq!(c[0], 1);
         assert_eq!(c[1], 2);
