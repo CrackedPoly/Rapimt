@@ -1,12 +1,12 @@
 use std::time::SystemTime;
 
 use fxhash::FxHashMap;
-use rapimt_core::prelude::RuddyPredicateEngine;
+use rapimt_core::prelude::{RuddyPredicateEngine, OxiddPredicateEngine};
 use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitor, TPTRuleStore};
-use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, PortInfoBase, TypedAction};
+use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
 fn main() {
-    let engine = RuddyPredicateEngine::init(100, 10);
+    let engine = RuddyPredicateEngine::init(10_000, 1000);
     let loader = DefaultInstLoader {};
     let devs = vec![
         "bbra_rtr", "bbrb_rtr", "boza_rtr", "bozb_rtr", "coza_rtr", "cozb_rtr", "goza_rtr",
