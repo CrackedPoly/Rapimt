@@ -1,4 +1,4 @@
-//! This module provides action encoding/decoding and action matching utilities.
+//! Action encoding and decoding, and match encoding.
 pub mod action;
 pub mod r#match;
 
@@ -9,8 +9,7 @@ pub mod prelude {
         action::{
             fwd::FwdActionType,
             acl::AclActionType,
-            seq_action, Action, ActionEncoder, CodedAction, CodedActions, Dimension,
-            Multiple, Single, UncodedAction,
+            Action, ActionEncoder, UncodedAction, CodedAction, Dimension, Multiple, Single, Actions
         },
         r#match::{
             family::{constant, MatchFamily},
