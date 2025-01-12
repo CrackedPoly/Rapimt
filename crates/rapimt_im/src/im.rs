@@ -235,3 +235,37 @@ where
         )
     }
 }
+
+/// Check if the inverse model is both mutually exclusive and complete, return `true` if the check
+/// passes.
+impl<A, P, T, M> InverseModel<A, P, T, M>
+where
+    A: Action<T>,
+    P: PredicateInner,
+    T: Dimension,
+    M: InverseModelMonoid<A, P, T>,
+{
+    pub fn property_check(&self) -> bool {
+        for ((_, px), ix) in self.iter().zip(0..) {
+            for ((_, py), iy) in self.iter().zip(0..).skip(ix + 1) {
+                if ix != iy {
+                    let pxy = px & py;
+                    if !pxy.is_empty() {
+                        return false;
+                    }
+                }
+            }
+        }
+        if !self.is_empty() {
+            let mut sum = self.iter().next().unwrap().1.clone();
+            for (_, p) in self.iter() {
+                sum |= p;
+            }
+            // if sum is not ONE
+            if !(!sum).is_empty() {
+                return false;
+            }
+        }
+        true
+    }
+}

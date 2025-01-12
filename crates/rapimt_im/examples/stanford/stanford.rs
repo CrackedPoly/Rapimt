@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use fxhash::FxHashMap;
-use rapimt_core::{action::seq_action::SeqActions, r#match::engine::RuddyPredicateEngine};
+use rapimt_core::prelude::{SeqActions, RuddyPredicateEngine};
 use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitor, TPTRuleStore};
 use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, PortInfoBase};
 
@@ -17,7 +17,7 @@ fn main() {
         devs.push(name.to_string());
     }
 
-    // load port information
+    // load topology (port information)
     let mut codexs = FxHashMap::<String, PortInfoBase>::default();
     for dev in devs.iter() {
         let spec_cont =

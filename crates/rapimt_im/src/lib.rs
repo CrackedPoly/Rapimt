@@ -8,6 +8,6 @@ pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
         im::{InverseModel, InverseModelMonoid},
-        monitor::{FastRuleMonitor, RuleMonitor, RuleStore, TPTRuleStore},
+        monitor::{FastRuleMonitor, RuleMonitor, RuleStore, TPTRuleStore, SimpleRuleStore},
     };
 }

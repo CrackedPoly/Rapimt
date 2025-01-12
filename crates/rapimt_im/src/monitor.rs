@@ -1,8 +1,6 @@
 use std::{
-    borrow::Borrow,
     cell::UnsafeCell,
     collections::{BTreeSet, BinaryHeap, HashMap},
-    ops::{Bound, RangeBounds},
     rc::Rc,
 };
 
@@ -16,39 +14,15 @@ use crate::im::{InverseModel, InverseModelMonoid};
 
 type RcRule<P, A> = Rc<Rule<P, A>>;
 
-pub trait IntoRangeIterator<'a, K, T>
-where
-    T: Ord + ?Sized,
-    K: Borrow<T> + Ord + 'a,
-{
-    fn into_range_iter<R>(self, range: R) -> impl DoubleEndedIterator<Item = &'a K>
-    where
-        R: RangeBounds<T>;
-}
-
-impl<'a, K, T> IntoRangeIterator<'a, K, T> for &'a BTreeSet<K>
-where
-    T: Ord + ?Sized,
-    K: Borrow<T> + Ord,
-{
-    fn into_range_iter<R>(self, range: R) -> impl DoubleEndedIterator<Item = &'a K>
-    where
-        R: RangeBounds<T>,
-    {
-        self.range(range)
-    }
-}
-
 pub trait RuleStore<A: Action<Single>, P: PredicateInner>: Default {
     fn insert(&mut self, rule: RcRule<P, A>);
     fn delete(&mut self, rule: &RcRule<P, A>);
     fn clear(&mut self);
+    /// Return a clonable iterator of rules that MAY overlap with the given rule
     fn search<'a, 'b>(
         &'a self,
         rule: &'b RcRule<P, A>,
-    ) -> impl IntoIterator<Item = &'a RcRule<P, A>>
-           + IntoRangeIterator<'a, RcRule<P, A>, RcRule<P, A>>
-           + Clone
+    ) -> impl Clone + DoubleEndedIterator<Item = &'a RcRule<P, A>>
     where
         A: 'a,
         P: 'a;
@@ -101,9 +75,7 @@ where
     fn search<'a, 'b>(
         &'a self,
         rule: &'b RcRule<P, A>,
-    ) -> impl IntoIterator<Item = &'a RcRule<P, A>>
-           + IntoRangeIterator<'a, RcRule<P, A>, RcRule<P, A>>
-           + Clone
+    ) -> impl Clone + DoubleEndedIterator<Item = &'a RcRule<P, A>>
     where
         A: 'a,
         P: 'a,
@@ -114,8 +86,54 @@ where
             for mv in rule.origin.iter() {
                 set.extend(self.tpt.search(Segmentizer::from(*mv)).clone())
             }
-            &(*set)
+            (*set).iter()
         }
+    }
+}
+
+pub struct SimpleRuleStore<A, P>
+where
+    A: Action<Single>,
+    P: PredicateInner,
+{
+    rules: BTreeSet<RcRule<P, A>>,
+}
+
+impl<A, P> Default for SimpleRuleStore<A, P>
+where
+    A: Action<Single>,
+    P: PredicateInner,
+{
+    fn default() -> Self {
+        SimpleRuleStore {
+            rules: BTreeSet::new(),
+        }
+    }
+}
+
+impl<A, P> RuleStore<A, P> for SimpleRuleStore<A, P>
+where
+    A: Action<Single>,
+    P: PredicateInner,
+{
+    fn insert(&mut self, rule: RcRule<P, A>) {
+        self.rules.insert(rule);
+    }
+    fn delete(&mut self, rule: &RcRule<P, A>) {
+        self.rules.remove(rule);
+    }
+    fn clear(&mut self) {
+        self.rules.clear();
+    }
+    fn search<'a, 'b>(
+        &'a self,
+        _rule: &'b RcRule<P, A>,
+    ) -> impl Clone + DoubleEndedIterator<Item = &'a RcRule<P, A>>
+    where
+        A: 'a,
+        P: 'a,
+    {
+        self.rules.iter()
     }
 }
 
@@ -154,9 +172,10 @@ pub trait RuleMonitor<A: Action<Single>, P: PredicateInner> {
 /// insert and delete FIB rules, and output an inverse model of the current forwarding state.
 ///
 /// Generic parameters:
-/// - `A`: Action<Single> type, which is used to represent the action of a FIB rule.
-/// - `ME`: MatchEncoder type, which is used provide default "match any packet" predicate for
+/// - `A`: [Action<Single>] type, which is used to represent the action of a FIB rule.
+/// - `ME`: [MatchEncoder] type, which is used provide default "match any packet" predicate for
 ///   the default rule..
+/// - `RS`: [RuleStore] type, which is used to store the rules.
 pub struct FastRuleMonitor<'p, A, ME, RS>
 where
     A: Action<Single>,
@@ -232,10 +251,7 @@ where
             let mut eff = r.predicate.clone();
             let related = self.store.search(&r);
             // effective predicate minus all higher priority predicates
-            for y in related
-                .clone()
-                .into_range_iter((Bound::Excluded(r.clone()), Bound::Unbounded))
-            {
+            for y in related.clone().filter(|re| re.priority > r.priority) {
                 eff -= &y.predicate;
                 if eff.is_empty() {
                     break;
@@ -255,10 +271,7 @@ where
             let related = self.store.search(&r);
             let mut to_divide = r.predicate.clone();
             // to_divide minus all higher priority predicates
-            for y in related
-                .clone()
-                .into_range_iter((Bound::Excluded(r.clone()), Bound::Unbounded))
-            {
+            for y in related.clone().filter(|re| re.priority > r.priority) {
                 to_divide -= &y.predicate;
                 if to_divide.is_empty() {
                     break;
@@ -267,11 +280,7 @@ where
             // if to_divide is still not empty, then it means if the rule is removed, the hiden
             // rules (variable y below) that are lower priority than it will be revealed
             while !to_divide.is_empty() {
-                for y in related
-                    .clone()
-                    .into_range_iter((Bound::Unbounded, Bound::Included(r.clone())))
-                    .rev()
-                {
+                for y in related.clone().filter(|re| re.priority < r.priority).rev() {
                     let eff = &y.predicate & &to_divide;
                     if !eff.is_empty() {
                         unsafe { &mut *self.local_ap.get() }
@@ -321,7 +330,7 @@ where
 #[cfg(test)]
 mod tests {
     use fxhash::FxHashMap;
-    use rapimt_core::prelude::{seq_action::SeqActions, RuddyPredicateEngine};
+    use rapimt_core::prelude::{SeqActions, RuddyPredicateEngine};
     use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
     use super::*;
