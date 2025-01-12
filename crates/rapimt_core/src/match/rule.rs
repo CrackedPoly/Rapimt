@@ -4,7 +4,7 @@ use crate::action::{Action, CodedAction, Single};
 use super::predicate::{Predicate, PredicateInner};
 use super::raw_match::MaskedValue;
 
-/// Rule is a local-representation of a flow entry.
+/// Local rule of a device.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct Rule<P: PredicateInner, A: Action<Single>> {
     pub priority: i32,
@@ -13,7 +13,7 @@ pub struct Rule<P: PredicateInner, A: Action<Single>> {
     pub origin: Vec<MaskedValue>,
 }
 
-/// UncodedRule is equivalent to a OpenFlow Flow Entry.
+/// Action-unencoded (raw) rule of a device.
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct UncodedRule<P: PredicateInner> {
     pub priority: i32,

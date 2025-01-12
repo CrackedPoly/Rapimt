@@ -1,5 +1,4 @@
-//! InverseModel operations and rule to InverseModel conversion.
-//! TODO::This module needs to be documented.
+//! InverseModel operations and generations.
 mod im;
 mod monitor;
 

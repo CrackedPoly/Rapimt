@@ -50,15 +50,15 @@ pub trait ActionType:
 {
 }
 
-/// Dimension is a empty trait that represents the type of action. Now, we have two types of
-/// actions: [Single] and [Multiple].
+/// An empty trait that represents the type of action. 
+///
+/// Now, we have two types of actions: [Single] and [Multiple].
 pub trait Dimension {}
 
-/// [Single] means the action is one-dimensional, it can only contain an action of a single device.
+/// [Single] means the action is one-dimensional, e.g., one forwarding action from a port.
 pub struct Single {}
 
-/// [Multiple] means the action is multi-dimensional, it contains actions of multiple
-/// devices.
+/// [Multiple] means the action is multi-dimensional, e.g. a sequence of actions.
 pub struct Multiple {}
 
 impl Dimension for Multiple {}
@@ -66,15 +66,18 @@ impl Dimension for Multiple {}
 impl Dimension for Single {}
 
 /// [Action] trait represents an action of desired dimension. Use type parameter to distinguish the
-/// dimension of action. Required methods are:
-/// - from: convert a single form of action to itself. note: how to access the single action from
-///         this action is not defined in this trait.
-/// - drop_action: return an action that represents drop.
+/// dimension of action. 
+///
+/// Required methods are:
+///
+/// - default_action: return an action that represents the default action.
 /// - no_overwrite: return an action that represents no action overwrite in Fast-IMT theory.
-/// - overwritten: return an action that represents the overwrite of self by rhs.
+/// - overwrite: return an action that represents the overwrite of self by rhs.
+/// - overwrite_: in-place version of overwrite.
+/// - from_single: new from an action of the single form. 
 pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
-    // What single form of action it contains. For structs that implements Action<Single>, it must
-    // be itself, while for Action<Multiple> structs, it should define one.
+    /// What single form of action it contains. For structs that implements [Action<Single>], `S` must
+    /// be itself, while for [Action<Multiple>] structs, it should define one.
     type S: Action<Single>;
 
     fn default_action() -> Self;
@@ -84,21 +87,20 @@ pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
     fn from_single(single: Self::S) -> Self;
 }
 
-/// UncodedAction is an action on a specific device, it should have rich information such as device
-/// name, forwrading mode, next hops, and may not be fix-sized. It can be encoded by an action
-/// encoder that represents the device.
+/// Unencoded action on a specific device.
 ///
-/// ***This trait is manufacture-specific.***
+/// It may have rich information such as device name,
+/// forwrading mode, next hops, and may not be fix-sized. It can be encoded by an action encoder
+/// that contains all topology information of the device.
 pub trait UncodedAction: Action<Single> + Clone {
     fn get_type(&self) -> impl Into<u8>;
     fn get_next_hops(&self) -> Option<impl IntoIterator<Item = &Rc<str>>>;
 }
 
-/// CodedAction should have fixed size and should live in the stack to achieve better performance.
-/// [Default] trait implementation default() is expected to return a value that represents no
-/// action overwrite, refer to Fast-IMT theory for more information. 
+/// Encoded, compact and opaque action.
 ///
-/// CodedAction should be opaque.
+/// [Default] trait implementation default() is expected to return a value that represents no
+/// action overwrite. All rust number primitive types are implemented for [CodedAction].
 pub trait CodedAction:
     Action<Single>
     + Eq
@@ -154,11 +156,10 @@ macro_rules! impl_coded_action_for_ints {
 
 impl_coded_action_for_ints!(usize, u128, u64, u32, u16, u8, isize, i128, i64, i32, i16, i8);
 
-/// ActionEncoder is essentially an instance that has all information about this device's topology
-/// (name, ports, port mode, neighbors), it can encode/decode raw action into/from CodedAction
-/// (which is more compact), and lookup the action by port name.
+/// Encoder and decoder between [UncodedAction] and [CodedAction].
 ///
-/// ***This trait is manufacture-specific.***
+/// This trait implementors should have all information about this device's topology (name, ports,
+/// port mode, neighbors). The interface may be enriched.
 pub trait ActionEncoder<'a>
 where
     Self: 'a,
@@ -170,7 +171,9 @@ where
     fn lookup(&'a self, port_name: &str) -> Option<Self::UA>;
 }
 
-/// Actions container trait.
+/// Container of multiple actions.
+/// 
+/// Represent a sequence of actions that exist in the system.
 pub trait Actions: 
     Action<Multiple>
     + Index<usize, Output = <Self as Action<Multiple>>::S>      // read by idx
@@ -181,8 +184,8 @@ pub trait Actions:
 {
     // Required methods
     fn len(&self) -> usize;
-    fn resize_(&mut self, to: usize, offset: usize);
     fn diff(&self, rhs: &Self) -> usize;
+    fn resize_(&mut self, to: usize, offset: usize);
 
     // Provided methods
     fn is_empty(&self) -> bool {

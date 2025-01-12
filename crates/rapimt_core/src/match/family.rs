@@ -1,16 +1,5 @@
 //! # Match family module
 //!
-//! ## What is a match family?
-//! In packet processing, a match family is a set of fields that can be
-//! matched against a packet. For example, in the TCP 4-tuple match family
-//! [TcpT4Family](MatchFamily::TcpT4Family), the fields are (sport, dport, sip, dip).
-//!
-//! ## What is it used for?
-//! We only need to know what fields are in a match family.
-//! [MatchEncoder](crate::core::r#match::MatchEncoder) uses the match family to
-//! directly encode a field value into a predicate.
-//!
-//! ## Example
 //! ```no_run
 //! use rapimt_core::fm_ipv4_from;
 //! use rapimt_core::prelude::{
@@ -30,12 +19,15 @@ pub struct FieldDeclaration {
     pub to: usize,
 }
 
+/// Lookup field declaration by name.
 pub trait FamilyDecl {
     fn get_field_declaration(&self, name: &str) -> Option<FieldDeclaration>;
 }
 
+/// Compile-time determined match family.
 pub struct MatchFamily;
 
+/// (codegen) Decide field names and bit positions.
 pub mod constant {
     use super::{MatchFamily, FamilyDecl, FieldDeclaration};
     use bitvec::order::Lsb0;
