@@ -17,7 +17,7 @@ pub mod prelude {
             predicate::{Predicate, PredicateInner},
             raw_match::{FieldMatch, MaskedValue, Match},
             rule::{Rule, UncodedRule},
-            engine::{MatchEncoder, PredicateEngine, RuddyPredicateEngine, RuddyPredicate},
+            engine::{MatchEncoder, PredicateEngine, RuddyPredicateEngine, RuddyPredicate, OxiddPredicateEngine, OxiddPredicate},
         },
     };
 }

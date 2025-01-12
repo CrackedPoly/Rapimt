@@ -12,7 +12,7 @@ Rapimt is a data plane verification framework written in Rust.
 ## Features
 
 - currently supported match fields: `src_ip`, `dst_ip`, `src_port`, `dst_port`, `vlan`
-- predicate engines: `Ruddy`
+- predicate engines: `Ruddy`, 'OxiDD'
 - verification functions: TODO
 
 ## Example
@@ -50,7 +50,7 @@ let mut im: InverseModel<_, _, _, FxHashMap<Vec<_>, _>> = InverseModel::default(
 // Incremental updates
 let mut im_updates = FxHashMap::default();
 
-// 3. Load fibs and get incremental updatek of each device
+// 3. Load fibs and get incremental update of each device
 for d in devs.iter() {
     let fib_cont = std::fs::read_to_string(format!("examples/stanford/fib/{}.fib", d)).unwrap();
     // Load, parse and encode fib rules

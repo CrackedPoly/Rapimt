@@ -4,9 +4,9 @@ use std::{
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign},
 };
 
-/// Inner representation of a predicate should implement Copy (most important) to avoid high cost.
+/// Inner representation of a predicate.
 pub trait PredicateInner:
-    Copy + Clone + Eq + PartialEq + Ord + PartialOrd + Hash + Display + Debug
+    Clone + Eq + PartialEq + Ord + PartialOrd + Hash + Display + Debug
 {
     fn not(&self) -> Self;
     fn and(&self, rhs: &Self) -> Self;
@@ -101,7 +101,7 @@ impl<P: PredicateInner> Predicate<P> {
 impl<P: PredicateInner> Clone for Predicate<P> {
     #[inline]
     fn clone(&self) -> Self {
-        Predicate::from(self.0)
+        Predicate::from(self.0.clone())
     }
 }
 
@@ -162,7 +162,7 @@ macro_rules! predicate_bitand_assign_impl {
         impl<P: PredicateInner> BitAndAssign<$rhs> for $lhs {
             #[inline]
             fn bitand_assign(&mut self, rhs: $rhs) {
-                let prev = self.0;
+                let prev = self.0.clone();
                 self.0 = self.0.and(&rhs.0)._ref();
                 prev._deref();
             }
@@ -188,7 +188,7 @@ macro_rules! predicate_bitor_assign_impl {
         impl<P: PredicateInner> BitOrAssign<$rhs> for $lhs {
             #[inline]
             fn bitor_assign(&mut self, rhs: $rhs) {
-                let prev = self.0;
+                let prev = self.0.clone();
                 self.0 = self.0.or(&rhs.0)._ref();
                 prev._deref();
             }
@@ -214,7 +214,7 @@ macro_rules! predicate_sub_assign_impl {
         impl<P: PredicateInner> SubAssign<$rhs> for $lhs {
             #[inline]
             fn sub_assign(&mut self, rhs: $rhs) {
-                let prev = self.0;
+                let prev = self.0.clone();
                 self.0 = self.0.comp(&rhs.0)._ref();
                 prev._deref();
             }
