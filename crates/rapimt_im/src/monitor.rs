@@ -14,11 +14,13 @@ use crate::im::{InverseModel, InverseModelMonoid};
 
 type RcRule<P, A> = Rc<Rule<P, A>>;
 
+/// Storage of rules.
 pub trait RuleStore<A: Action<Single>, P: PredicateInner>: Default {
     fn insert(&mut self, rule: RcRule<P, A>);
     fn delete(&mut self, rule: &RcRule<P, A>);
     fn clear(&mut self);
-    /// Return a clonable iterator of rules that MAY overlap with the given rule
+    /// Return a clonable, sorted, double-ended iterator of rules that MAY overlap with the given
+    /// rule.
     fn search<'a, 'b>(
         &'a self,
         rule: &'b RcRule<P, A>,
@@ -137,7 +139,7 @@ where
     }
 }
 
-// RuleMonitor is a storage of Rules in a single device.
+// Rule storage and IM generator.
 pub trait RuleMonitor<A: Action<Single>, P: PredicateInner> {
     // Required methods
     fn clear(&mut self);
@@ -166,15 +168,12 @@ pub trait RuleMonitor<A: Action<Single>, P: PredicateInner> {
     }
 }
 
-/// Fast FIB Monitor
-///
-/// Fast FIB Monitor functions as FIB storage of a forwarding device. A monitor has methods to
-/// insert and delete FIB rules, and output an inverse model of the current forwarding state.
+/// A rule store and IM generator of a device. 
 ///
 /// Generic parameters:
 /// - `A`: [Action<Single>] type, which is used to represent the action of a FIB rule.
 /// - `ME`: [MatchEncoder] type, which is used provide default "match any packet" predicate for
-///   the default rule..
+///   the default rule.
 /// - `RS`: [RuleStore] type, which is used to store the rules.
 pub struct FastRuleMonitor<'p, A, ME, RS>
 where

@@ -33,6 +33,7 @@ pub struct NodeCommon {
     description: Option<String>,
 }
 
+/// IB switch spec.
 #[derive(Default, Debug)]
 pub struct SwitchSpec {
     common: NodeCommon,
@@ -44,6 +45,7 @@ pub struct SwitchSpec {
     links: Vec<LinkSpec>,
 }
 
+/// IB channel adapter spec.
 #[derive(Default, Debug)]
 pub struct CaSpec {
     common: NodeCommon,
@@ -51,6 +53,7 @@ pub struct CaSpec {
     links: Vec<LinkSpec>,
 }
 
+/// Speed unit of a port.
 #[derive(IntoPrimitive)]
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
@@ -80,6 +83,7 @@ impl<T: Borrow<str>> From<T> for SpeedUnit {
     }
 }
 
+/// Link spec between two ports.
 #[derive(Default, Debug)]
 pub struct LinkSpec {
     src_port_idx: PortIdx,

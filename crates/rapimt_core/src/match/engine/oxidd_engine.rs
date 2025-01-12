@@ -18,7 +18,7 @@ use crate::r#match::{
     raw_match::{FieldMatch, Match},
 };
 
-/// [oxidd](https://github.com/OxiDD/oxidd) library.
+/// A predicate engine based on the [oxidd](https://github.com/OxiDD/oxidd) library.
 pub struct OxiddPredicateEngine {
     pub manager_ref: BDDManagerRef,
     var_pair: Vec<(BDDFunction, BDDFunction)>,
@@ -322,6 +322,7 @@ impl<'a> PredicateEngine<'a> for OxiddPredicateEngine {
     }
 }
 
+/// Companion struct of [OxiddPredicateEngine].
 #[derive(Clone)]
 pub struct OxiddPredicate<'a> {
     pub bdd: BDDFunction,

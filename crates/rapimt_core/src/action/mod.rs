@@ -22,12 +22,13 @@
 //!                              (Primitive types)                                  
 //!                              +--------+--------+                                
 //!                              v                 v                                
-//!                         SeqActions         TreeActions    impls Action<Multiple>
-//!                         (Vector)           (MerkleTree)                         
+//!                             Vec           TreeActions (todo)    impls Action<Multiple>
+//!                                           (MerkleTree)                         
 //! ```
-pub mod seq_action;
-pub mod fwd;
 pub mod acl;
+pub mod fwd;
+pub mod seq_action;
+pub mod tree_action;
 
 use std::{
     fmt::{Debug, Display},

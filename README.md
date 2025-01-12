@@ -12,7 +12,7 @@ Rapimt is a data plane verification framework written in Rust.
 ## Features
 
 - currently supported match fields: `src_ip`, `dst_ip`, `src_port`, `dst_port`, `vlan`
-- predicate engines: `Ruddy`, 'OxiDD'
+- predicate engines: `Ruddy`, `OxiDD`
 - verification functions: TODO
 
 ## Example

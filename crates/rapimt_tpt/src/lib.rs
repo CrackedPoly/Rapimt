@@ -1,7 +1,7 @@
 //! Ternary Patricia Tree (TPT) implementation for Rule monitor to insert, remove, lookup rules.
 //! (Only helpful for prefix matching)
-mod patricia;
-mod segment;
+pub mod patricia;
+pub mod segment;
 
 #[cfg(feature = "graphviz")]
 pub use crate::patricia::GraphvizDebug;

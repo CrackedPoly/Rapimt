@@ -1,6 +1,6 @@
 //! InverseModel operations and generations.
-mod im;
-mod monitor;
+pub mod im;
+pub mod monitor;
 
 #[allow(missing_docs)]
 pub mod prelude {
