@@ -6,7 +6,7 @@ use pest::iterators::Pair;
 use pest_derive::Parser;
 
 #[derive(Parser)]
-#[grammar = "src/ib/ibtopo.pest"]
+#[grammar = "src/ib/ib_grammer.pest"]
 pub struct IbTopoParser;
 
 pub trait NodeType {}
@@ -97,21 +97,34 @@ pub struct LinkSpec {
     description: Option<String>,
 }
 
+/// IB fib rule.
+#[derive(Default, Debug)]
+pub struct IBFibRule {
+    lid: Lid,
+    port: PortIdx,
+}
+
 /// [Rule::hex_bare_ident]
 fn parse_hex_bare_ident<U: Unsigned>(pair: Pair<'_, Rule>) -> U {
-    let hex_bare_ident = pair
-        .into_inner()
-        .find(|p| p.as_rule() == Rule::hex_bare_ident)
-        .unwrap();
+    let hex_bare_ident = match pair.as_rule() {
+        Rule::hex_bare_ident => pair,
+        _ => pair
+            .into_inner()
+            .find(|p| p.as_rule() == Rule::hex_bare_ident)
+            .unwrap(),
+    };
     U::from_str_radix(hex_bare_ident.as_str(), 16).unwrap()
 }
 
 /// [Rule::hex_ident]
 fn parse_hex_ident<U: Unsigned>(pair: Pair<'_, Rule>) -> U {
-    let hex_ident = pair
-        .into_inner()
-        .find(|p| p.as_rule() == Rule::hex_ident)
-        .unwrap();
+    let hex_ident = match pair.as_rule() {
+        Rule::hex_ident => pair,
+        _ => pair
+            .into_inner()
+            .find(|p| p.as_rule() == Rule::hex_ident)
+            .unwrap(),
+    };
     parse_hex_bare_ident(hex_ident)
 }
 
@@ -140,10 +153,13 @@ fn parse_ca_guid(pair: Pair<'_, Rule>) -> Guid {
 
 /// [Rule::port_id], [Rule::port_num], [Rule::lid], [Rule::lmc]
 fn parse_dec_ident<U: Unsigned>(pair: Pair<'_, Rule>) -> U {
-    let digit_ident = pair
-        .into_inner()
-        .find(|p| p.as_rule() == Rule::digit_ident)
-        .unwrap();
+    let digit_ident = match pair.as_rule() {
+        Rule::digit_ident => pair,
+        _ => pair
+            .into_inner()
+            .find(|p| p.as_rule() == Rule::digit_ident)
+            .unwrap(),
+    };
     U::from_str_radix(digit_ident.as_str(), 10).unwrap()
 }
 
@@ -250,11 +266,24 @@ pub fn parse_ca_spec(spec: &mut CaSpec, pair: Pair<'_, Rule>) {
     }
 }
 
+/// [Rule::fib_rule]
+pub fn parse_fib_rule(pair: Pair<'_, Rule>) -> IBFibRule {
+    let mut rule = IBFibRule::default();
+    for p in pair.into_inner() {
+        match p.as_rule() {
+            Rule::hex_ident => rule.lid = parse_hex_ident(p),
+            Rule::port_num => rule.port = parse_dec_ident(p),
+            _ => {}
+        }
+    }
+    rule
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pest::Parser;
-    use std::fs;
+    use std::{collections::HashMap, fs};
 
     #[test]
     fn test_ibtopo_parser() {
@@ -262,8 +291,8 @@ mod tests {
         let mut cas: Vec<CaSpec> = Vec::new();
 
         let unparsed_file =
-            fs::read_to_string("examples/ibnetdiscover/topo.txt").expect("cannot read file");
-        let file = IbTopoParser::parse(Rule::file, &unparsed_file)
+            fs::read_to_string("examples/ibnetdiscover/topo").expect("cannot read file");
+        let file = IbTopoParser::parse(Rule::topo_file, &unparsed_file)
             .expect("unsuccessful parse") // unwrap the parse result
             .next()
             .unwrap(); // get and unwrap the `file` rule; never fails
@@ -289,5 +318,36 @@ mod tests {
         println!("number of Cas: {}", cas.len());
         // dbg!(&switches);
         // dbg!(&cas);
+    }
+
+    #[test]
+    fn test_ibroute_parser() {
+        let mut switches: HashMap<String, Vec<IBFibRule>> = HashMap::new();
+        for file in fs::read_dir("examples/ibroute/").unwrap() {
+            let file = file.unwrap();
+            let file_path = file.path();
+            let file_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+            let unparsed_file = fs::read_to_string(file_path).expect("cannot read file");
+            let file = IbTopoParser::parse(Rule::fib_file, &unparsed_file)
+                .expect("unsuccessful parse") // unwrap the parse result
+                .next()
+                .unwrap(); // get and unwrap the `file` rule; never fails
+            let mut fib_rules = Vec::new();
+            for rule in file.into_inner() {
+                match rule.as_rule() {
+                    Rule::fib_file_heading_unicast => {}
+                    Rule::fib_header => {}
+                    Rule::fib_rule => fib_rules.push(parse_fib_rule(rule)),
+                    Rule::fib_conclusion => {}
+                    Rule::EOI => {}
+                    _ => {}
+                }
+            }
+            switches.insert(file_name, fib_rules);
+        }
+        println!("number of Switches: {}", switches.len());
+        for (k, v) in switches.iter() {
+            println!("number of rules in {}: {}", k, v.len());
+        }
     }
 }
