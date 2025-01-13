@@ -1,13 +1,21 @@
+// ----- Common Definitions -----
 heading_comment = @{ "#" ~ (!"\n" ~ ASCII)* }
 WHITESPACE      = _{ " " | "\t" | NEWLINE }
 
-hex_bare_ident    = ${ ASCII_HEX_DIGIT+ }
-hex_ident         = ${ "0x" ~ hex_bare_ident }
-desc_str          = ${ (!"\"" ~ ASCII)+ }
-parentheses_inner = ${ (!")" ~ ASCII)+ }
-digit_ident       = ${ ASCII_DIGIT+ }
-node_name_ident   = ${ ("S" | "H") ~ "-" ~ ASCII_HEX_DIGIT+ }
+parenthesed0 = { (!("(" | ")") ~ ANY)+ }
+parenthesed  = { "(" ~ (parenthesed0 | parenthesed)+ ~ ")" }
+bracketed0   = { (!("[" | "]") ~ ANY)+ }
+bracketed    = { "[" ~ (bracketed0 | bracketed)+ ~ "]" }
+quote0       = { (!"\"" ~ ANY)+ }
+quoted       = { "\"" ~ quote0 ~ "\"" }
 
+hex_bare_ident  = ${ ASCII_HEX_DIGIT+ }
+hex_ident       = ${ "0x" ~ hex_bare_ident }
+digit_ident     = ${ ASCII_DIGIT+ }
+node_name_ident = ${ ("S" | "H") ~ "-" ~ ASCII_HEX_DIGIT+ }
+// ----- Common Definitions -----
+
+// ----- Topology File -----
 port_src_node_ident = { hex_bare_ident }
 port_dst_node_ident = { hex_bare_ident }
 node_hex_ident      = { hex_ident }
@@ -20,7 +28,7 @@ src_port_id = { port_id }
 dst_port_id = { port_id }
 
 node_name  = ${ "\"" ~ node_name_ident ~ "\"" }
-desc       =  { "#" ~ (desc_str)? ~ "\"" ~ desc_str ~ "\"" }
+desc       =  { "#" ~ (quote0)? ~ "\"" ~ quote0 ~ "\"" }
 base_port  =  { "base port" ~ digit_ident }
 lid        =  { "lid" ~ digit_ident }
 lmc        =  { "lmc" ~ digit_ident }
@@ -44,12 +52,16 @@ switch_spec = { vendid_stat ~ devid_stat ~ sysimgguid_stat ~ switchguid_stat ~ s
 ca_spec     = { vendid_stat ~ devid_stat ~ sysimgguid_stat ~ caguid_stat ~ ca_meta ~ link_spec* }
 
 topo_file = { SOI ~ heading_comment* ~ (switch_spec | ca_spec)* ~ EOI }
+// ----- Topology File -----
 
+// ----- FIB File -----
 fib_file_heading_unicast = {
-    "Unicast lids [" ~ hex_ident ~ "-" ~ hex_ident ~ "]" ~ "of switch Lid" ~ digit_ident ~ "guid" ~ hex_ident ~ "(" ~ parentheses_inner ~ "):"
+    "Unicast lids" ~ bracketed ~ "of switch Lid" ~ digit_ident ~ "guid" ~ hex_ident ~ parenthesed ~ ":"
 }
 fib_header               = { "Lid" ~ "Out" ~ "Destination" ~ "Port" ~ "Info" }
-fib_rule                 = { hex_ident ~ digit_ident }
+fib_rule                 = { hex_ident ~ digit_ident ~ (":" ~ parenthesed)? }
 fib_conclusion           = { digit_ident ~ "valid lids dumped" }
 
 fib_file = { SOI ~ fib_file_heading_unicast ~ fib_header ~ fib_rule+ ~ fib_conclusion }
+// ----- FIB File -----
+

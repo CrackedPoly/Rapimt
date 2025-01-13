@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 
 use funty::Unsigned;
+use nom::Slice;
 use num_enum::IntoPrimitive;
 use pest::iterators::Pair;
 use pest_derive::Parser;
@@ -30,7 +31,7 @@ pub struct NodeCommon {
     node_guid: Guid,
     port_guid: Option<Guid>,
     port_num: PortIdx,
-    description: Option<String>,
+    description: String,
 }
 
 /// IB switch spec.
@@ -94,14 +95,15 @@ pub struct LinkSpec {
     speed_unit: SpeedUnit,
     src_node_guid: Option<Guid>,
     dst_node_guid: Option<Guid>,
-    description: Option<String>,
+    description: String,
 }
 
 /// IB fib rule.
 #[derive(Default, Debug)]
-pub struct IBFibRule {
+pub struct RawIBFibRule {
     lid: Lid,
     port: PortIdx,
+    description: String,
 }
 
 /// [Rule::hex_bare_ident]
@@ -195,7 +197,7 @@ fn parse_link_spec(pair: Pair<'_, Rule>) -> LinkSpec {
             Rule::port_src_node_ident => spec.src_node_guid = Some(parse_hex_bare_ident(p)),
             Rule::dst_port_id => spec.dst_port_idx = parse_port_id(p),
             Rule::port_dst_node_ident => spec.dst_node_guid = Some(parse_hex_bare_ident(p)),
-            Rule::desc => spec.description = Some(p.as_str().to_string()),
+            Rule::desc => spec.description = p.as_str().to_string(),
             Rule::lid => spec.dst_port_lid = parse_dec_ident(p),
             Rule::widthspeed => (spec.widthspeed, spec.speed_unit) = parse_widthspeed(p),
             _ => {}
@@ -210,7 +212,7 @@ pub fn parse_switch_meta(spec: &mut SwitchSpec, pair: Pair<'_, Rule>) {
         match p.as_rule() {
             Rule::port_num => spec.common.port_num = parse_dec_ident(p),
             Rule::node_name => { /* duplicate guid */ }
-            Rule::desc => spec.common.description = Some(p.as_str().to_string()),
+            Rule::desc => spec.common.description = p.as_str().to_string(),
             Rule::base_port => spec.base_port = parse_dec_ident(p),
             Rule::lid => spec.port_lid = parse_dec_ident(p),
             Rule::lmc => spec.port_lmc = parse_dec_ident(p),
@@ -245,7 +247,7 @@ pub fn parse_ca_meta(spec: &mut CaSpec, pair: Pair<'_, Rule>) {
         match p.as_rule() {
             Rule::port_num => spec.common.port_num = parse_dec_ident(p),
             Rule::node_name => { /* duplicate guid */ }
-            Rule::desc => spec.common.description = Some(p.as_str().to_string()),
+            Rule::desc => spec.common.description = p.as_str().to_string(),
             _ => {}
         }
     }
@@ -267,12 +269,15 @@ pub fn parse_ca_spec(spec: &mut CaSpec, pair: Pair<'_, Rule>) {
 }
 
 /// [Rule::fib_rule]
-pub fn parse_fib_rule(pair: Pair<'_, Rule>) -> IBFibRule {
-    let mut rule = IBFibRule::default();
+pub fn parse_fib_rule(pair: Pair<'_, Rule>) -> RawIBFibRule {
+    let mut rule = RawIBFibRule::default();
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::hex_ident => rule.lid = parse_hex_ident(p),
             Rule::port_num => rule.port = parse_dec_ident(p),
+            Rule::parenthesed => {
+                rule.description = p.as_str().slice(1..p.as_str().len() - 1).to_string()
+            }
             _ => {}
         }
     }
@@ -322,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_ibroute_parser() {
-        let mut switches: HashMap<String, Vec<IBFibRule>> = HashMap::new();
+        let mut switches: HashMap<String, Vec<RawIBFibRule>> = HashMap::new();
         for file in fs::read_dir("examples/ibroute/").unwrap() {
             let file = file.unwrap();
             let file_path = file.path();
@@ -348,6 +353,7 @@ mod tests {
         println!("number of Switches: {}", switches.len());
         for (k, v) in switches.iter() {
             println!("number of rules in {}: {}", k, v.len());
+            println!("description: {}", v[0].description);
         }
     }
 }
