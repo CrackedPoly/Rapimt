@@ -7,15 +7,17 @@
 //!
 use std::io::Result;
 
+use crate::r#match::family::{constant, FamilyDecl};
 use crate::r#match::predicate::{Predicate, PredicateInner};
 use crate::r#match::raw_match::{FieldMatch, MaskedValue, Match};
-use crate::r#match::family::{constant, FamilyDecl};
 use funty::Unsigned;
 
-mod ruddy_engine;
+#[cfg(feature = "lid")]
+mod no_engine;
 mod oxidd_engine;
-pub use ruddy_engine::{RuddyPredicate, RuddyPredicateEngine};
+mod ruddy_engine;
 pub use oxidd_engine::{OxiddPredicate, OxiddPredicateEngine};
+pub use ruddy_engine::{RuddyPredicate, RuddyPredicateEngine};
 
 /// Parse field values and encodes them into a predicate.
 pub trait MatchEncoder<'a>
@@ -46,7 +48,7 @@ where
             Some(fdecl) => {
                 let from = fdecl.from;
                 let to = fdecl.to;
-                return match fm.cond {
+                match fm.cond {
                     Match::ExactMatch { value } => {
                         let mask = U::MAX;
                         (
@@ -86,7 +88,7 @@ where
                             .collect();
                         (pred, mvs)
                     }
-                };
+                }
             }
             _ => unimplemented!("{}", fm.field),
         }
@@ -99,7 +101,7 @@ where
                 let to = fdecl.to;
                 match fm.cond {
                     Match::ExactMatch { value } => {
-                        let mask = (U::ONE << (to - from)) - U::ONE;
+                        let mask = U::MAX;
                         self._encode(value, mask, from, to)
                     }
                     Match::TernaryMatch { value, mask } => self._encode(value, mask, from, to),
@@ -155,7 +157,7 @@ where
 }
 
 /// An extended trait of MatchEncoder, which additionally enables serialization and deserialization
-/// of a predicate. 
+/// of a predicate.
 ///
 /// It is useful when local storing or remote transmitting predicates.
 pub trait PredicateEngine<'a>: MatchEncoder<'a> {
@@ -199,4 +201,3 @@ pub trait PredicateEngine<'a>: MatchEncoder<'a> {
     #[cfg(feature = "tag")]
     fn erase_except_tag(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P>;
 }
-

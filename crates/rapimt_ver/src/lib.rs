@@ -1,4 +1,7 @@
 //! Verification traits and implementations.
+
+pub mod ib;
+
 use rapimt_core::prelude::{Predicate, PredicateInner};
 
 pub trait Invariant {

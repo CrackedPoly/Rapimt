@@ -5,3 +5,12 @@ edition = "2021"
 
 [dependencies]
 rapimt_core = { path = "../rapimt_core" }
+rapimt_im = { path = "../rapimt_im" }
+rapimt_io = { path = "../rapimt_io" }
+fxhash = { workspace = true }
+
+[dev-dependencies]
+
+[[example]]
+name = "ib_snapshot"
+path = "src/main.rs"

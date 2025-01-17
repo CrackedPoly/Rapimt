@@ -27,6 +27,7 @@
 //! ```
 pub mod acl;
 pub mod fwd;
+pub mod ib;
 pub mod seq_action;
 pub mod tree_action;
 
@@ -34,7 +35,6 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
     ops::{Index, IndexMut},
-    rc::Rc,
 };
 
 pub trait ActionType:
@@ -77,8 +77,8 @@ impl Dimension for Single {}
 /// - overwrite_: in-place version of overwrite.
 /// - from_single: new from an action of the single form. 
 pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
-    /// What single form of action it contains. For structs that implements [Action<Single>], `S` must
-    /// be itself, while for [Action<Multiple>] structs, it should define one.
+    /// What single form of action it contains. For structs that implements [`Action<Single>`], `S` must
+    /// be itself, while for [`Action<Multiple>`] structs, it should define one.
     type S: Action<Single>;
 
     fn default_action() -> Self;
@@ -93,9 +93,12 @@ pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
 /// It may have rich information such as device name,
 /// forwrading mode, next hops, and may not be fix-sized. It can be encoded by an action encoder
 /// that contains all topology information of the device.
-pub trait UncodedAction: Action<Single> + Clone {
+pub trait UncodedAction<'a>: Action<Single> + Clone {
+    /// Type of neighbor representation.
+    type N;
+
     fn get_type(&self) -> impl Into<u8>;
-    fn get_next_hops(&self) -> Option<impl IntoIterator<Item = &Rc<str>>>;
+    fn get_next_hops(&self) -> Option<Box<dyn Iterator<Item = Self::N> + 'a>>;
 }
 
 /// Encoded, compact and opaque action.
@@ -166,10 +169,13 @@ where
     Self: 'a,
 {
     type A: CodedAction;
-    type UA: UncodedAction + 'a;
+    type UA: UncodedAction<'a> + 'a;
+    /// lookup key
+    type K: ?Sized;
     fn encode(&'a self, action: Self::UA) -> Self::A;
     fn decode(&'a self, coded_action: Self::A) -> Self::UA;
-    fn lookup(&'a self, port_name: &str) -> Option<Self::UA>;
+    fn lookup(&'a self, port_name: impl AsRef<Self::K>) -> Option<Self::UA>;
+    fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Option<Self::A>;
 }
 
 /// Container of multiple actions.

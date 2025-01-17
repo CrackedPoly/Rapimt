@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use fxhash::FxHashMap;
 use rapimt_core::prelude::{RuddyPredicateEngine, OxiddPredicateEngine};
-use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitor, TPTRuleStore};
+use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore};
 use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
 fn main() {

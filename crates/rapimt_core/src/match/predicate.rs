@@ -25,7 +25,7 @@ pub trait PredicateInner:
 /// - [|] : logical OR
 /// - [-] : logical DIFF
 /// - [==] : equality
-/// - [is_empty] : check if the predicate is empty
+/// - is_empty : check if the predicate is empty
 ///
 /// ## Operations explained
 /// Predicate hide reference counting inside, it is coherent with the Rust ownership model. When a

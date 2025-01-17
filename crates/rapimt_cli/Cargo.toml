@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# rapimt_internal = { path = "crates/rapimt_internal" }
+clap = { version = "4", features = ["derive"] }
+
+[[bin]]
+name = "ib_oneshot"
+path = "src/bin/ib_oneshot.rs"

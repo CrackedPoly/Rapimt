@@ -41,8 +41,11 @@ dport = ["rapimt_internal/dport"]
 ## Support encoding 16-bit source port numbers
 sport = ["rapimt_internal/sport"]
 
-## Support encoding 8-bit VLAN tags
+## Support encoding 16-bit VLAN tags
 tag = ["rapimt_internal/tag"]
+
+## Support encoding 16-bit InfiniBand lid
+lid = ["rapimt_internal/lid"]
 
 [[bin]]
 doc = false

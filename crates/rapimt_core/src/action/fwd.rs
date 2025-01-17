@@ -6,11 +6,12 @@ use super::ActionType;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum FwdActionType {
     #[default]
-    DROP = 0,
-    FORWARD = 1,
-    FLOOD = 2,
-    ECMP = 3,
-    FAILOVER = 4,
+    NonOverwrite = 0,
+    DROP = 1,
+    FORWARD = 2,
+    FLOOD = 3,
+    ECMP = 4,
+    FAILOVER = 5,
 }
 
 impl From<i32> for FwdActionType {

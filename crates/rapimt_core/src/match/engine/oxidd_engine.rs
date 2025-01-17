@@ -37,6 +37,9 @@ pub struct OxiddPredicateEngine {
 
     #[cfg(feature = "tag")]
     pub tag_varset_pair: (BDDFunction, BDDFunction),
+
+    #[cfg(feature = "lid")]
+    pub lid_varset_pair: (BDDFunction, BDDFunction),
 }
 
 impl OxiddPredicateEngine {
@@ -139,6 +142,21 @@ impl OxiddPredicateEngine {
             (tag_varset, not_tag_varset)
         };
 
+        #[cfg(feature = "lid")]
+        let (lid_varset, not_lid_varset) = {
+            let (from, to) = constant::FIELD_MAP.get("lid").unwrap();
+            let mut lid_varset = var_pair[0].0.clone();
+            let mut not_lid_varset = var_pair[0].0.clone();
+            for i in 0..constant::MAX_POS {
+                if i >= *from && i < *to {
+                    lid_varset = lid_varset.and(&var_pair[i + 1].0).unwrap();
+                } else {
+                    not_lid_varset = not_lid_varset.and(&var_pair[i + 1].0).unwrap();
+                }
+            }
+            (lid_varset, not_lid_varset)
+        };
+
         Self {
             manager_ref,
             var_pair,
@@ -153,6 +171,8 @@ impl OxiddPredicateEngine {
             sport_varset_pair: (sport_varset, not_sport_varset),
             #[cfg(feature = "tag")]
             tag_varset_pair: (tag_varset, not_tag_varset),
+            #[cfg(feature = "lid")]
+            lid_varset_pair: (lid_varset, not_lid_varset),
         }
     }
 }
