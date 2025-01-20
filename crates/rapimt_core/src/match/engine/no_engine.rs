@@ -15,6 +15,7 @@ pub struct NoPredicateEngine<U: Unsigned> {
 }
 
 impl<U: Unsigned> NoPredicateEngine<U> {
+    #[allow(unused)]
     pub fn init(_node_num: usize, _cache_size: usize) -> Self {
         Self {
             _phantom: PhantomData,

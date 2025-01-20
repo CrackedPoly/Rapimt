@@ -1,31 +1,28 @@
-use std::{path::PathBuf, time::Instant};
+use std::path::PathBuf;
 
 use rapimt_core::r#match::engine::RuddyPredicateEngine;
-use rapimt_ver::ib::snapshot::{SnapshotConfig, SnapshotQuery, SnapshotVerifier};
+use rapimt_ver::ib::{
+    requirement::{label_3_stage, SimplePathExactRegexSetPlugin},
+    snapshot::{IbDataPlaneConfig, SnapshotVerifier},
+    SnapshotQuery,
+};
 
 fn main() {
     let engine = RuddyPredicateEngine::init(10000, 5000);
-    let config = SnapshotConfig {
+    let config = IbDataPlaneConfig {
         engine: &engine,
         topology_dir: PathBuf::from("examples/ibdiagnet2"),
-        route_dir: PathBuf::from("examples/ibroute"),
+        far_dir: PathBuf::from("examples/ibdiagnet2/far"),
+        label_fn: label_3_stage,
     };
-    let verifier = SnapshotVerifier::new(&config).unwrap();
+    let mut verifier = SnapshotVerifier::new(&config).unwrap();
+    // INFO: L: Leaf switch, S: Spine switch, C: Core switch, H: Host
+    let plugin = Box::new(SimplePathExactRegexSetPlugin::new(
+        "Simple path Regex set count",
+        [("LH", 0), ("LSLH", 0), ("LSCSLH", 0)],
+    ));
+    verifier.register_plugin(plugin);
+    verifier.refresh().unwrap();
 
-    let before = Instant::now();
-    println!(
-        "actions for lid 0x0001: {:?}",
-        verifier.query_lid(0x0001).unwrap().1
-    );
-    println!("query time: {:?}", before.elapsed());
     println!("#EC: {}", verifier.query_num_ec());
 }
-// Time of different parts:
-// load topology files: 107.679375ms
-// load route files: 2.861129246s
-// merge local EC: 44.450319004s
-// merge global EC: about 3 min
-// single query time: 447.333µs
-//
-// actions for lid 0x0001: [8194, 8199, ..., 8224, 8224]
-// #EC: 11797

@@ -26,30 +26,39 @@ pub trait RuleLike {
 }
 
 /// Rule storage and IM generator.
-pub trait RuleMonitorLike<A: Action<Single>, P: PredicateInner, R: RuleLike> {
+///
+/// [A]: Action type inside the monitor.
+/// [OA]: Output action type of the inverse model.
+/// [T]: Dimension type of the inverse model.
+/// [M]: Inverse model monoid type.
+/// [P]: Predicate type inside the monitor.
+/// [R]: Rule type stored inside the monitor.
+pub trait RuleMonitorLike<A, OA, T, M, P, R>
+where
+    A: Action<Single>,
+    OA: Action<T, S = A>,
+    T: Dimension,
+    M: InverseModelMonoid<OA, P, T>,
+    P: PredicateInner,
+    R: RuleLike<A = A, P = P>,
+{
     /// Required methods
     fn clear(&mut self);
 
     /// First call of update should return an inverse model of the current state.
     /// Subsequent calls should return an inverse model that represent an incremental update.
-    fn update<OA: Action<T, S = A>, T: Dimension, M: InverseModelMonoid<OA, P, T>>(
+    fn update(
         &mut self,
         insertion: impl IntoIterator<Item = R>,
         deletion: impl IntoIterator<Item = R>,
     ) -> InverseModel<OA, P, T, M>;
 
     /// Provided methods
-    fn insert<OA: Action<T, S = A>, T: Dimension, M: InverseModelMonoid<OA, P, T>>(
-        &mut self,
-        insertion: impl IntoIterator<Item = R>,
-    ) -> InverseModel<OA, P, T, M> {
+    fn insert(&mut self, insertion: impl IntoIterator<Item = R>) -> InverseModel<OA, P, T, M> {
         self.update(insertion, vec![])
     }
 
-    fn delete<OA: Action<T, S = A>, T: Dimension, M: InverseModelMonoid<OA, P, T>>(
-        &mut self,
-        deletion: impl IntoIterator<Item = R>,
-    ) -> InverseModel<OA, P, T, M> {
+    fn delete(&mut self, deletion: impl IntoIterator<Item = R>) -> InverseModel<OA, P, T, M> {
         self.update(vec![], deletion)
     }
 }

@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::{error::Error, path::Path};
 
 use crate::ib::loader::*;
@@ -11,14 +10,6 @@ use rapimt_core::action::ib::IbActionType;
 #[derive(Parser)]
 #[grammar = "src/ib/cmd_parser/ibfar.pest"]
 struct IbFarParser;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct LftEntry {
-    pub lid: Lid,
-    pub port: PortIdx,
-    pub group: GroupIdx,
-    pub lid_state: IbActionType,
-}
 
 #[derive(Debug, Default)]
 pub struct FwdState {
@@ -71,18 +62,13 @@ fn parse_group_entry(pair: Pair<'_, Rule>) -> GroupSpec {
             Rule::group_idx => {
                 group.group_idx = parse_dec_ident(p);
             }
-            Rule::ports => match cache_get().get_key_value(p.as_str()) {
-                Some((_, ports)) => group.ports = Cow::Borrowed(ports),
-                None => {
-                    let mut new_ports: Vec<PortIdx> = vec![];
-                    let key = p.as_str().to_string();
-                    for p1 in p.into_inner() {
-                        new_ports.push(parse_dec_ident(p1));
-                    }
-                    let new_ports = cache_get_mut().entry(key).or_insert(new_ports);
-                    group.ports = Cow::Borrowed(new_ports);
+            Rule::ports => {
+                let mut new_ports: Vec<PortIdx> = vec![];
+                for p1 in p.into_inner() {
+                    new_ports.push(parse_dec_ident(p1));
                 }
-            },
+                group.ports = new_ports;
+            }
             _ => {}
         }
     }
@@ -175,13 +161,14 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "file too big, this mod is also deprecated"]
     fn test_ibfar_parser() {
         let switches = load_forwarding_tables("examples/ibdiagnet2/ibdiagnet2.far").unwrap();
 
         println!("number of Switches: {}", switches.len());
-        println!("Cache size: {}", cache_get().len());
-        for k in cache_get().keys() {
-            println!("Port group pattern: {}", k);
-        }
+        // println!("Cache size: {}", get_cache().len());
+        // for k in get_cache().keys() {
+        //     println!("Port group pattern: {}", k);
+        // }
     }
 }

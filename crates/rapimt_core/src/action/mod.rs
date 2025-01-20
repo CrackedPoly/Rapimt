@@ -34,24 +34,15 @@ pub mod tree_action;
 use std::{
     fmt::{Debug, Display},
     hash::Hash,
-    ops::{Index, IndexMut},
+    rc::Rc,
 };
 
 pub trait ActionType:
-    Into<u8> +
-    Clone +
-    Debug +
-    Copy +
-    PartialEq +
-    Eq +
-    Hash +
-    PartialOrd +
-    Ord +
-    Default
+    Into<u8> + Clone + Debug + Copy + PartialEq + Eq + Hash + PartialOrd + Ord + Default
 {
 }
 
-/// An empty trait that represents the type of action. 
+/// An empty trait that represents the type of action.
 ///
 /// Now, we have two types of actions: [Single] and [Multiple].
 pub trait Dimension {}
@@ -67,7 +58,7 @@ impl Dimension for Multiple {}
 impl Dimension for Single {}
 
 /// [Action] trait represents an action of desired dimension. Use type parameter to distinguish the
-/// dimension of action. 
+/// dimension of action.
 ///
 /// Required methods are:
 ///
@@ -75,7 +66,7 @@ impl Dimension for Single {}
 /// - no_overwrite: return an action that represents no action overwrite in Fast-IMT theory.
 /// - overwrite: return an action that represents the overwrite of self by rhs.
 /// - overwrite_: in-place version of overwrite.
-/// - from_single: new from an action of the single form. 
+/// - from_single: new from an action of the single form.
 pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
     /// What single form of action it contains. For structs that implements [`Action<Single>`], `S` must
     /// be itself, while for [`Action<Multiple>`] structs, it should define one.
@@ -86,6 +77,30 @@ pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
     fn overwrite(&self, rhs: &Self) -> Self;
     fn overwrite_(&mut self, rhs: &Self);
     fn from_single(single: Self::S) -> Self;
+}
+
+impl<T: Dimension, A: Action<T>> Action<T> for Rc<A> {
+    type S = A::S;
+
+    fn default_action() -> Self {
+        Rc::new(A::default_action())
+    }
+
+    fn no_overwrite() -> Self {
+        Rc::new(A::no_overwrite())
+    }
+
+    fn overwrite(&self, rhs: &Self) -> Self {
+        Rc::new(self.as_ref().overwrite(rhs.as_ref()))
+    }
+
+    fn overwrite_(&mut self, rhs: &Self) {
+        Rc::make_mut(self).overwrite_(rhs.as_ref());
+    }
+
+    fn from_single(single: Self::S) -> Self {
+        Rc::new(A::from_single(single))
+    }
 }
 
 /// Unencoded action on a specific device.
@@ -179,23 +194,36 @@ where
 }
 
 /// Container of multiple actions.
-/// 
+///
 /// Represent a sequence of actions that exist in the system.
-pub trait Actions: 
-    Action<Multiple>
-    + Index<usize, Output = <Self as Action<Multiple>>::S>      // read by idx
-    + IndexMut<usize, Output = <Self as Action<Multiple>>::S>   // update by idx in-place
-    + Clone
-    + Hash
-    + Eq
-{
+pub trait Actions: Action<Multiple> + Clone + Hash + Eq {
     // Required methods
     fn len(&self) -> usize;
     fn diff(&self, rhs: &Self) -> usize;
     fn resize_(&mut self, to: usize, offset: usize);
+    fn index(&self, index: usize) -> &Self::S;
+    fn index_mut(&mut self, index: usize) -> &mut Self::S;
 
     // Provided methods
     fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl<A: Actions> Actions for Rc<A> {
+    fn len(&self) -> usize {
+        self.as_ref().len()
+    }
+    fn diff(&self, rhs: &Self) -> usize {
+        self.as_ref().diff(rhs.as_ref())
+    }
+    fn resize_(&mut self, to: usize, offset: usize) {
+        Rc::make_mut(self).resize_(to, offset);
+    }
+    fn index(&self, index: usize) -> &Self::S {
+        self.as_ref().index(index)
+    }
+    fn index_mut(&mut self, index: usize) -> &mut Self::S {
+        Rc::make_mut(self).index_mut(index)
     }
 }

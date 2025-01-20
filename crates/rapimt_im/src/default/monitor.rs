@@ -163,29 +163,16 @@ where
     tmp_ow: UnsafeCell<FxHashMap<A, Predicate<ME::P>>>,
 }
 
-impl<'p, A, ME, RS> RuleMonitorLike<A, ME::P, Rule<ME::P, A>> for FastRuleMonitor<'p, A, ME, RS>
-where
-    A: Action<Single>,
-    ME: MatchEncoder<'p>,
-    RS: RuleStore<A, ME::P>,
-{
-    fn clear(&mut self) {
-        self.store.clear();
-        self.i_rules.clear();
+impl<'p, A, OA, T, ME, RS> RuleMonitorLike<A, OA, T, FxHashMap<OA, Predicate<ME::P>>, ME::P, Rule<ME::P, A>> for FastRuleMonitor<'p, A, ME, RS> where A: Action<Single>, OA: Action<T, S = A>, T: Dimension, ME: MatchEncoder<'p>, RS: RuleStore<A, ME::P>, { fn clear(&mut self) { self.store.clear(); self.i_rules.clear();
         self.d_rules.clear();
         self.i_rules.push(self.default_rule.clone());
     }
 
-    fn update<OA, T, M>(
+    fn update(
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
         deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
-    ) -> InverseModel<OA, ME::P, T, M>
-    where
-        OA: Action<T, S = A>,
-        T: Dimension,
-        M: InverseModelMonoid<OA, ME::P, T>,
-    {
+    ) -> InverseModel<OA, ME::P, T, FxHashMap<OA, Predicate<ME::P>>> {
         let firse_time = !self.i_rules.is_empty();
         insertion.into_iter().for_each(|r| {
             let r = Rc::new(r);

@@ -1,5 +1,6 @@
 //! Parse topology and rules from diverse sources.
 #![feature(once_cell_get_mut)]
+#![feature(path_file_prefix)]
 
 pub mod default;
 pub mod ib;
@@ -12,10 +13,6 @@ pub mod prelude {
             loader::{DefaultInstLoader, PortInfoBase, TypedAction},
             FibLoader, InstanceLoader,
         },
-        ib::{
-            cmd_parser::{ibfar_parser, ibroute_parser},
-            db_csv_parser::csv_parser,
-            loader::*,
-        },
+        ib::{db_csv_parser::csv_parser, loader::*},
     };
 }

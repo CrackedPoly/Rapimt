@@ -1,9 +1,13 @@
+use std::rc::Rc;
+
 use crate::{
     ib::loader::{Guid, Lid},
-    prelude::{LinkSpec, NodeCommon, PortSpec},
+    prelude::{GroupIdx, GroupSpec, LftEntry, LinkSpec, NodeCommon, PortIdx, PortSpec},
 };
+use csv::ReaderBuilder;
 use funty::Unsigned;
 use fxhash::{FxBuildHasher, FxHashMap};
+use rapimt_core::action::ib::IbActionType;
 use serde::{Deserialize, Deserializer};
 
 fn deserialize_maybe_nan<'de, D, T: Deserialize<'de>>(
@@ -143,8 +147,31 @@ pub struct PortRecord {
     pub RetransActv: Option<u64>,
 }
 
-pub fn load_nodes(
+/// Group|SubGroup|WHBF|Ports
+#[doc(hidden)]
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct GroupRecord<'a> {
+    pub Group: GroupIdx,
+    pub SubGroup: GroupIdx,
+    pub WHBF: u8,
+    pub Ports: &'a str,
+}
+
+/// LID|StaticPort|LidState|Group
+#[doc(hidden)]
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct LftRecord {
+    pub LID: Lid,
+    pub StaticPort: PortIdx,
+    pub LidState: IbActionType,
+    pub Group: GroupIdx,
+}
+
+pub fn load_node_commons(
     file: impl AsRef<std::path::Path>,
+    label_fn: fn(&str) -> u8,
 ) -> Result<Vec<NodeCommon>, Box<dyn std::error::Error>> {
     let file = std::fs::File::open(file)?;
     let mut nodes = vec![];
@@ -162,7 +189,8 @@ pub fn load_nodes(
             port_num: nr.NumPorts,
             node_type: nr.NodeType.try_into()?,
             description: nr.NodeDesc.to_string(),
-            ..Default::default()
+            label: label_fn(nr.NodeDesc),
+            ports: FxHashMap::default(),
         });
     }
     Ok(nodes)
@@ -211,13 +239,113 @@ pub fn load_ports(
     Ok(node_ports)
 }
 
+pub fn load_nodes(
+    dir: impl AsRef<std::path::Path>,
+    label_fn: fn(&str) -> u8,
+) -> Result<FxHashMap<Guid, Rc<NodeCommon>>, Box<dyn std::error::Error>> {
+    let node_common_file = dir.as_ref().join("nodes.csv");
+    let nodes = load_node_commons(node_common_file, label_fn)?;
+    let mut nodes: FxHashMap<Guid, Rc<NodeCommon>> = nodes
+        .into_iter()
+        .map(|node| (node.node_guid, Rc::new(node)))
+        .collect();
+    // load ports
+    let port_file = dir.as_ref().join("ports.csv");
+    let node_ports = load_ports(port_file)?;
+    for (guid, ports) in node_ports {
+        let node = Rc::get_mut(nodes.get_mut(&guid).unwrap()).unwrap();
+        for port in ports {
+            // leave link to None for now
+            node.ports.insert(port.port_num, (port, None));
+        }
+    }
+    // load links
+    let link_file = dir.as_ref().join("links.csv");
+    let links = load_links(link_file)?;
+    for link in links {
+        let dst_node = nodes.get_mut(&link.dst_node_guid).unwrap();
+        let dst_port = Rc::make_mut(dst_node)
+            .ports
+            .get_mut(&link.dst_port_idx)
+            .unwrap();
+        dst_port.1 = Some(link.swap());
+        let src_node = nodes.get_mut(&link.src_node_guid).unwrap();
+        let src_port = Rc::make_mut(src_node)
+            .ports
+            .get_mut(&link.src_port_idx)
+            .unwrap();
+        src_port.1 = Some(link);
+    }
+    Ok(nodes)
+}
+
+pub fn load_groups(
+    file: impl AsRef<std::path::Path>,
+) -> Result<(Guid, FxHashMap<GroupIdx, GroupSpec>), Box<dyn std::error::Error>> {
+    let file_name = file
+        .as_ref()
+        .file_prefix()
+        .ok_or("File path should not terminates with . or ..")?
+        .to_str()
+        .ok_or("Invalid UTF-8 file name")?;
+    let guid = Guid::from_str_radix(&file_name[2..], 16)?;
+    let file = std::fs::File::open(file)?;
+    let mut groups = FxHashMap::default();
+    let mut rdr = ReaderBuilder::new().delimiter(b'|').from_reader(file);
+    let mut raw_record = csv::StringRecord::new();
+    let headers = rdr.headers()?.clone();
+    while rdr.read_record(&mut raw_record)? {
+        let mut spec = GroupSpec::default();
+        let gr: GroupRecord = raw_record.deserialize(Some(&headers))?;
+        let mut new_ports: Vec<PortIdx> = vec![];
+        for port in gr.Ports.split(',') {
+            if let Ok(p) = port.parse() {
+                new_ports.push(p)
+            }
+        }
+        spec.ports = new_ports;
+        groups.insert(gr.Group, spec);
+    }
+
+    Ok((guid, groups))
+}
+
+pub fn load_lft(
+    file: impl AsRef<std::path::Path>,
+) -> Result<(Guid, Vec<LftEntry>), Box<dyn std::error::Error>> {
+    let file_name = file
+        .as_ref()
+        .file_prefix()
+        .ok_or("File path should not terminates with . or ..")?
+        .to_str()
+        .ok_or("Invalid UTF-8 file name")?;
+    let guid = Guid::from_str_radix(&file_name[2..], 16)?;
+    let file = std::fs::File::open(file)?;
+    let mut lft = vec![];
+    let mut rdr = ReaderBuilder::new().delimiter(b'|').from_reader(file);
+    let mut raw_record = csv::StringRecord::new();
+    let headers = rdr.headers()?.clone();
+    while rdr.read_record(&mut raw_record)? {
+        let lr: LftRecord = raw_record.deserialize(Some(&headers))?;
+        let entry = LftEntry {
+            lid: lr.LID,
+            port: lr.StaticPort,
+            group: lr.Group,
+            lid_state: lr.LidState,
+        };
+        lft.push(entry);
+    }
+
+    Ok((guid, lft))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_read_nodes_from_csv() {
-        match load_nodes("examples/ibdiagnet2/nodes.csv") {
+        match load_node_commons("examples/ibdiagnet2/nodes.csv", |_x| 0) {
             Ok(nodes) => {
                 println!("{}", nodes.len());
             }
@@ -250,6 +378,38 @@ mod tests {
             Err(err) => {
                 println!("{}", err);
                 panic!("parse error");
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "too many files"]
+    fn test_read_groups_from_csv() {
+        let far_dir = "examples/ibdiagnet2/far/group/";
+        for entry in std::fs::read_dir(far_dir).unwrap() {
+            let entry = entry.unwrap();
+            match load_groups(entry.path()) {
+                Ok(_) => {}
+                Err(err) => {
+                    println!("{}", err);
+                    panic!("parse error");
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "too many files"]
+    fn test_read_lft_from_csv() {
+        let far_dir = "examples/ibdiagnet2/far/lft/";
+        for entry in std::fs::read_dir(far_dir).unwrap() {
+            let entry = entry.unwrap();
+            match load_lft(entry.path()) {
+                Ok(_) => {}
+                Err(err) => {
+                    println!("{}", err);
+                    panic!("parse error");
+                }
             }
         }
     }

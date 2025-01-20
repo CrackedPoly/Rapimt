@@ -1,18 +1,12 @@
-use std::{
-    collections::hash_map::Entry,
-    error::Error,
-    ops::Deref,
-    path::PathBuf,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{error::Error, path::PathBuf, rc::Rc};
 
 use fxhash::{FxBuildHasher, FxHashMap};
+use petgraph::graph::DiGraph;
 use rapimt_core::{
-    action::{ActionEncoder, Actions, Multiple},
+    action::{ib::IbActionType, ActionEncoder, Actions, Multiple, UncodedAction},
     r#match::{
         engine::MatchEncoder,
-        predicate::{Predicate, PredicateInner},
+        predicate::Predicate,
         raw_match::{FieldMatch, Match},
     },
 };
@@ -22,27 +16,27 @@ use rapimt_im::{
     RuleMonitorLike,
 };
 use rapimt_io::ib::{
-    cmd_parser::ibroute_parser::load_routes,
-    db_csv_parser::csv_parser::{load_links, load_nodes, load_ports},
-    loader::{CaSpec, FusedIdx, Guid, Lid, NodeType, RawAction, RawIbFibRule, SwitchSpec},
+    db_csv_parser::csv_parser::{load_groups, load_lft, load_nodes},
+    loader::{CaSpec, FusedIdx, Guid, LftEntry, Lid, NodeType, RawAction, SwitchSpec},
 };
 
-pub struct SnapshotConfig<'p, ME: MatchEncoder<'p>> {
+use super::{CachedFwdGraph, LabelFn, SnapshotQuery, VerificationPlugin};
+
+pub struct IbDataPlaneConfig<'p, ME>
+where
+    ME: MatchEncoder<'p>,
+{
     pub engine: &'p ME,
     pub topology_dir: PathBuf,
-    pub route_dir: PathBuf,
-}
-
-pub trait SnapshotQuery<'a, A: Actions, P: PredicateInner> {
-    fn query_lid(&self, lid: Lid) -> Option<(&Predicate<P>, &A)>;
-    fn query_num_ec(&self) -> usize;
+    pub far_dir: PathBuf,
+    pub label_fn: LabelFn,
 }
 
 struct IbDataPlane<'p, ME: MatchEncoder<'p>> {
     engine: &'p ME,
     switch_monitors: FxHashMap<Guid, IbRuleMonitor<'p, FusedIdx, ME>>,
     switch_order: FxHashMap<Guid, usize>,
-    switch_specs: FxHashMap<Guid, Rc<SwitchSpec>>,
+    switch_specs: FxHashMap<Guid, SwitchSpec>,
     ca_specs: FxHashMap<Guid, CaSpec>,
 }
 
@@ -52,120 +46,48 @@ where
 {
     // Load the snapshot from the given directory.
     // This method implementation is ugly because the input format is not regular.
-    fn new(config: &SnapshotConfig<'p, ME>) -> Result<Self, Box<dyn Error>> {
+    fn new(config: &IbDataPlaneConfig<'p, ME>) -> Result<Self, Box<dyn Error>> {
         let mut switch_specs = FxHashMap::with_hasher(FxBuildHasher::default());
         let mut switch_monitors = FxHashMap::with_hasher(FxBuildHasher::default());
         let mut switch_order = FxHashMap::with_hasher(FxBuildHasher::default());
         let mut ca_specs = FxHashMap::with_hasher(FxBuildHasher::default());
-        let nodes = load_nodes(config.topology_dir.join("nodes.csv"))?;
-        // parse all node information
-        for node in nodes {
+        let nodes = load_nodes(&config.topology_dir, config.label_fn)?;
+        for (guid, node) in nodes {
             match node.node_type {
                 NodeType::Switch => {
-                    switch_monitors.insert(node.node_guid, IbRuleMonitor::new(config.engine));
-                    switch_order.insert(node.node_guid, switch_order.len());
-                    let spec = SwitchSpec {
-                        common: node,
-                        ..Default::default()
-                    };
-                    switch_specs.insert(spec.common.node_guid, spec);
+                    switch_specs.insert(
+                        guid,
+                        SwitchSpec {
+                            common: node.clone(),
+                            ..Default::default()
+                        },
+                    );
+                    switch_monitors.insert(guid, IbRuleMonitor::new(config.engine));
+                    switch_order.insert(guid, switch_order.len());
                 }
                 NodeType::HCA => {
-                    let spec = CaSpec { common: node };
-                    ca_specs.insert(spec.common.node_guid, spec);
+                    ca_specs.insert(
+                        guid,
+                        CaSpec {
+                            common: node.clone(),
+                        },
+                    );
                 }
             }
         }
-        // parse all ports
-        let ports = load_ports(config.topology_dir.join("ports.csv"))?;
-        for (node_guid, ports) in ports {
-            if let Entry::Occupied(mut e) = switch_specs.entry(node_guid) {
-                let switch_spec = e.get_mut();
-                for port in ports {
-                    switch_spec.common.ports.insert(port.port_num, (port, None));
-                }
-                continue;
-            }
-            if let Entry::Occupied(mut e) = ca_specs.entry(node_guid) {
-                let ca_spec = e.get_mut();
-                for port in ports {
-                    ca_spec.common.ports.insert(port.port_num, (port, None));
-                }
-            }
-        }
-        // parse all links
-        let links = load_links(config.topology_dir.join("links.csv"))?;
-        for link in links {
-            // we cannot decide src and dst node type, so we try both
-            loop {
-                if let Entry::Occupied(mut e) = switch_specs.entry(link.src_node_guid) {
-                    let switch_spec = e.get_mut();
-                    let (_, mut l) =
-                        switch_spec
-                            .common
-                            .ports
-                            .get_mut(&link.src_port_idx)
-                            .ok_or(format!(
-                                "Link error: Port {} not found in switch {}",
-                                link.src_port_idx, link.src_node_guid
-                            ))?;
-                    l.replace(link);
-                    break;
-                }
-                if let Entry::Occupied(mut e) = ca_specs.entry(link.src_node_guid) {
-                    let ca_spec = e.get_mut();
-                    let (_, mut l) =
-                        ca_spec
-                            .common
-                            .ports
-                            .get_mut(&link.src_port_idx)
-                            .ok_or(format!(
-                                "Link error: Port {} not found in CA {}",
-                                link.src_port_idx, link.src_node_guid
-                            ))?;
-                    l.replace(link);
-                    break;
-                }
-            }
-            loop {
-                if let Entry::Occupied(mut e) = switch_specs.entry(link.dst_node_guid) {
-                    let switch_spec = e.get_mut();
-                    let (_, mut l) =
-                        switch_spec
-                            .common
-                            .ports
-                            .get_mut(&link.dst_port_idx)
-                            .ok_or(format!(
-                                "Link error: Port {} not found in switch {}",
-                                link.dst_port_idx, link.dst_node_guid
-                            ))?;
-                    l.replace(link.swap());
-                    break;
-                }
-                if let Entry::Occupied(mut e) = ca_specs.entry(link.dst_node_guid) {
-                    let ca_spec = e.get_mut();
-                    let (_, mut l) =
-                        ca_spec
-                            .common
-                            .ports
-                            .get_mut(&link.dst_port_idx)
-                            .ok_or(format!(
-                                "Link error: Port {} not found in CA {}",
-                                link.dst_port_idx, link.dst_node_guid
-                            ))?;
-                    l.replace(link.swap());
-                    break;
-                }
-            }
+        // parse all groups
+        for file in std::fs::read_dir(config.far_dir.join("group"))? {
+            let (guid, groups) = load_groups(file?.path())?;
+            let switch_spec = switch_specs
+                .get_mut(&guid)
+                .ok_or(format!("group error: switch {} not found", guid))?;
+            switch_spec.groups = groups;
         }
         let dp = Self {
             engine: config.engine,
             switch_monitors,
             switch_order,
-            switch_specs: switch_specs
-                .into_iter()
-                .map(|(k, v)| (k, Rc::new(v)))
-                .collect(),
+            switch_specs,
             ca_specs,
         };
 
@@ -178,8 +100,7 @@ where
             .insert(spec.common.node_guid, IbRuleMonitor::new(self.engine));
         self.switch_order
             .insert(spec.common.node_guid, self.switch_order.len());
-        self.switch_specs
-            .insert(spec.common.node_guid, Rc::new(spec));
+        self.switch_specs.insert(spec.common.node_guid, spec);
     }
 
     #[allow(unused)]
@@ -194,12 +115,11 @@ where
         deletion: impl IntoIterator<Item = Rule<ME::P, FusedIdx>>,
     ) -> IM<ME::P> {
         let monitor = self.switch_monitors.get_mut(&switch).unwrap();
-        let im = InverseModel::resize(
+        InverseModel::resize(
             monitor.update(insertion, deletion),
             self.switch_order.len(),
             *self.switch_order.get(&switch).unwrap(),
-        );
-        im
+        )
     }
 
     fn encode_lid(&self, lid: Lid) -> Predicate<ME::P> {
@@ -212,22 +132,29 @@ where
     fn encode_rules(
         &self,
         switch: Guid,
-        rules: impl IntoIterator<Item = RawIbFibRule>,
+        rules: impl IntoIterator<Item = LftEntry>,
     ) -> impl IntoIterator<Item = Rule<ME::P, FusedIdx>> {
-        let encoder = self.switch_specs.get(&switch).unwrap().clone();
+        let encoder = self.switch_specs.get(&switch).unwrap();
         let mut encoded_rules = vec![];
         for r in rules.into_iter() {
-            let raw_action = RawAction::Static(r.port);
+            let raw_action = match r.lid_state {
+                IbActionType::Static => RawAction::Static(r.port),
+                IbActionType::HashBasedForwarding => RawAction::HBF(r.group),
+                IbActionType::AdaptiveRouting => RawAction::AR(r.group),
+                _ => panic!("Unsupported action type"),
+            };
             encoded_rules.push(Rule {
                 predicate: self.encode_lid(r.lid),
-                action: encoder.deref().encode_raw(&raw_action).unwrap(),
+                action: encoder.encode_raw(&raw_action).unwrap(),
+                lid: r.lid,
             });
         }
         encoded_rules
     }
 }
 
-type IM<P> = InverseModel<Vec<FusedIdx>, P, Multiple, FxHashMap<Vec<FusedIdx>, Predicate<P>>>;
+type ActionsRepr = Rc<Vec<FusedIdx>>;
+type IM<P> = InverseModel<ActionsRepr, P, Multiple, Vec<(ActionsRepr, Predicate<P>)>>;
 
 pub struct SnapshotVerifier<'p, ME>
 where
@@ -235,27 +162,34 @@ where
 {
     dp: IbDataPlane<'p, ME>,
 
-    #[allow(clippy::type_complexity)]
     im: IM<ME::P>,
-    #[allow(clippy::type_complexity)]
     im_updates: Vec<IM<ME::P>>,
+
+    // fast lookup actions by predicate
+    query_cache: FxHashMap<Predicate<ME::P>, ActionsRepr>,
+    // forwarding graphs
+    graphs: FxHashMap<ActionsRepr, CachedFwdGraph>,
+    // verification plugins
+    plugins: Vec<Box<dyn VerificationPlugin>>,
 }
 
 impl<'p, ME> SnapshotVerifier<'p, ME>
 where
     ME: MatchEncoder<'p>,
 {
-    pub fn new(config: &SnapshotConfig<'p, ME>) -> Result<Self, Box<dyn Error>> {
+    pub fn new(config: &IbDataPlaneConfig<'p, ME>) -> Result<Self, Box<dyn Error>> {
         let mut verifier = Self {
             dp: IbDataPlane::new(config)?,
             im: InverseModel::default(),
             im_updates: Vec::default(),
+            query_cache: FxHashMap::default(),
+            graphs: FxHashMap::default(),
+            plugins: Vec::default(),
         };
-        for file in std::fs::read_dir(&config.route_dir)? {
-            let (guid, routes) = load_routes(file?.path())?;
+        for file in std::fs::read_dir(config.far_dir.join("lft"))? {
+            let (guid, routes) = load_lft(file?.path())?;
             verifier.diff_raw_rules(guid, routes, vec![]);
         }
-        verifier.refresh();
         Ok(verifier)
     }
 
@@ -273,8 +207,8 @@ where
     pub fn diff_raw_rules(
         &mut self,
         switch: Guid,
-        insertion: impl IntoIterator<Item = RawIbFibRule>,
-        deletion: impl IntoIterator<Item = RawIbFibRule>,
+        insertion: impl IntoIterator<Item = LftEntry>,
+        deletion: impl IntoIterator<Item = LftEntry>,
     ) {
         let ins = self.dp.encode_rules(switch, insertion);
         let del = self.dp.encode_rules(switch, deletion);
@@ -282,25 +216,95 @@ where
     }
 
     /// Refresh the inverse model with stashed updates.
-    pub fn refresh(&mut self) {
+    pub fn refresh(&mut self) -> Result<(), Box<dyn Error>> {
+        // update global model
         for update in self.im_updates.drain(..) {
             self.im <<= update;
         }
+        // update query cache
+        for (action, predicate) in self.im.iter() {
+            self.query_cache.insert(predicate.clone(), action.clone());
+        }
+        // add to forwarding graphs if there are new action patterns
+        for (action, _) in self.im.iter() {
+            self.graphs.entry(action.clone()).or_insert_with(|| {
+                let mut graph = DiGraph::default();
+                let mut node_map = FxHashMap::default();
+                graph.reserve_nodes(action.len());
+                // add all switch nodes
+                for (src_guid, src) in self.dp.switch_specs.iter() {
+                    let node_idx = graph.add_node(src.common.clone());
+                    node_map.insert(*src_guid, node_idx);
+                }
+                // add all edges according to decodec actions
+                for (src_guid, src) in self.dp.switch_specs.iter() {
+                    let idx = self.dp.switch_order.get(src_guid).unwrap();
+                    let decoded_action = src.decode(*action.index(*idx));
+                    if let Some(it) = decoded_action.get_next_hops() {
+                        for dst_guid in it {
+                            // may contains CA nodes
+                            if !self.dp.switch_specs.contains_key(&dst_guid) {
+                                node_map.entry(dst_guid).or_insert_with(|| {
+                                    let dst = self.dp.ca_specs.get(&dst_guid).unwrap();
+                                    graph.add_node(dst.common.clone())
+                                });
+                            }
+                            graph.add_edge(
+                                *node_map.get(src_guid).unwrap(),
+                                *node_map.get(&dst_guid).unwrap(),
+                                (),
+                            );
+                        }
+                    }
+                }
+                CachedFwdGraph {
+                    graph,
+                    veri_cache: FxHashMap::default(),
+                    node_map,
+                }
+            });
+        }
+        // run verification plugins
+        for plugin in &self.plugins {
+            for (_, graph) in self.graphs.iter_mut() {
+                let name = plugin.get_name();
+                if !graph.veri_cache.contains_key(name) {
+                    let result = plugin.execute(graph);
+                    println!("Verification plugin {:?} report: {:?}", name, result);
+                    graph.veri_cache.insert(name.to_string(), result);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Register a verification plugin.
+    pub fn register_plugin(&mut self, plugin: Box<dyn VerificationPlugin>) {
+        self.plugins.push(plugin);
+    }
+
+    /// Execute all verification plugins.
+    pub fn verify(&mut self) -> Result<(), Box<dyn Error>> {
+        for plugin in &self.plugins {
+            let name = plugin.get_name();
+            for (_, graph) in self.graphs.iter_mut() {
+                if !graph.veri_cache.contains_key(name) {
+                    let result = plugin.execute(graph);
+                    graph.veri_cache.insert(name.to_string(), result);
+                }
+            }
+        }
+        Ok(())
     }
 }
 
-impl<'p, ME> SnapshotQuery<'p, Vec<FusedIdx>, ME::P> for SnapshotVerifier<'p, ME>
+impl<'p, ME> SnapshotQuery<'p, ActionsRepr, ME::P> for SnapshotVerifier<'p, ME>
 where
     ME: MatchEncoder<'p>,
 {
-    fn query_lid(&self, lid: Lid) -> Option<(&Predicate<ME::P>, &Vec<FusedIdx>)> {
+    fn query_ec(&self, lid: Lid) -> Option<(&Predicate<ME::P>, &ActionsRepr)> {
         let p = self.dp.encode_lid(lid);
-        for (action, predicate) in self.im.iter() {
-            if !(predicate | &p).is_empty() {
-                return Some((predicate, action));
-            }
-        }
-        None
+        self.query_cache.get_key_value(&p)
     }
 
     fn query_num_ec(&self) -> usize {
@@ -309,33 +313,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Instant;
-
-    use rapimt_core::r#match::engine::RuddyPredicateEngine;
-
-    use super::*;
-
-    #[test]
-    fn test_snapshot_verifier_query() {
-        let engine = RuddyPredicateEngine::init(10000, 5000);
-        let config = SnapshotConfig {
-            engine: &engine,
-            topology_dir: PathBuf::from("examples/ibdiagnet2"),
-            route_dir: PathBuf::from("examples/ibroute"),
-        };
-        let verifier = SnapshotVerifier::new(&config).unwrap();
-
-        let before = Instant::now();
-        println!(
-            "actions for lid 0x0001: {:?}",
-            verifier.query_lid(0x0001).unwrap().1
-        );
-        println!("query time: {:?}", before.elapsed());
-        println!("#EC: {}", verifier.query_num_ec());
-
-        for (_, p) in verifier.im.iter() {
-            println!("predicate: {:?}", p);
-        }
-    }
-}
+mod tests {}

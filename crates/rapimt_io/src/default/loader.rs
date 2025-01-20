@@ -248,7 +248,10 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
     }
 
     fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Option<Self::A> {
-        self.ports.borrow().get_full(port_name.as_ref()).map(|(idx, _)| idx)
+        self.ports
+            .borrow()
+            .get_full(port_name.as_ref())
+            .map(|(idx, _)| idx)
     }
 }
 
@@ -702,11 +705,11 @@ mod tests {
 
         // two rules as an incremental update
         // im should have three entries: one default "drop", one 0.0.0.0/1 and one "192.168.1.0/24"
-        let im = fib_monitor.insert::<_, _, FxHashMap<usize, _>>(fibs.clone());
+        let im: InverseModel<_, _, _, FxHashMap<usize, _>> = fib_monitor.insert(fibs.clone());
         assert_eq!(im.len(), 3);
 
-        fib_monitor.clear();
-        let im = fib_monitor.insert::<_, _, FxHashMap<usize, _>>(fibs);
+        RuleMonitorLike::<_, usize, _, _, _, _>::clear(&mut fib_monitor);
+        let im: InverseModel<_, _, _, FxHashMap<usize, _>> = fib_monitor.insert(fibs);
         assert_eq!(im.len(), 3);
 
         let im = InverseModel::<_, _, _, FxHashMap<Vec<usize>, _>>::from(im);
@@ -715,7 +718,7 @@ mod tests {
         // load fib rules and encode action to TypedAction with codex, run the same as above
         let (_, fibs) = FibLoader::<TypedAction>::load(&codex, &engine, fib).unwrap();
         let mut fib_monitor = FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine);
-        let im = fib_monitor.insert::<_, _, FxHashMap<TypedAction, _>>(fibs);
+        let im: InverseModel<_, _, _, FxHashMap<TypedAction, _>> = fib_monitor.insert(fibs);
         assert_eq!(im.len(), 3);
     }
 }

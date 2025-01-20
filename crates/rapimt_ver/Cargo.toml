@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rapimt_core = { path = "../rapimt_core" }
+rapimt_core = { path = "../rapimt_core", features = ["lid"] }
 rapimt_im = { path = "../rapimt_im" }
 rapimt_io = { path = "../rapimt_io" }
 fxhash = { workspace = true }
+num_enum = { workspace = true }
+regex = { version = "1.11.1" }
+petgraph = { version = "0.7.1" }
 
 [dev-dependencies]
 

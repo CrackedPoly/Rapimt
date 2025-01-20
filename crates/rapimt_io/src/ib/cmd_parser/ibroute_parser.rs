@@ -97,6 +97,7 @@ mod tests {
     use std::{collections::HashMap, fs};
 
     #[test]
+    #[ignore = "too many files, this mod is also deprecated"]
     fn test_ibroute_parser() {
         let mut switches = HashMap::new();
         for file in fs::read_dir("examples/ibroute/").unwrap() {

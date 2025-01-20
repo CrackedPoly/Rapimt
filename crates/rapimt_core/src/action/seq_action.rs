@@ -77,6 +77,14 @@ impl<A: Action<Single> + Copy> Actions for Vec<A> {
         }
         diff
     }
+
+    fn index(&self, index: usize) -> &Self::S {
+        &self[index]
+    }
+
+    fn index_mut(&mut self, index: usize) -> &mut Self::S {
+        &mut self[index]
+    }
 }
 
 #[cfg(test)]

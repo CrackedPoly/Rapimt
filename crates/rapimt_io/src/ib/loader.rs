@@ -1,30 +1,28 @@
-use std::{
-    borrow::{Borrow, Cow},
-    sync::OnceLock,
-};
+use std::{borrow::Borrow, fmt::Debug, rc::Rc};
 
 use derivative::Derivative;
 use funty::Unsigned;
 use fxhash::FxHashMap;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use rapimt_core::action::{ib::IbActionType, Action, ActionEncoder, Single, UncodedAction};
+use serde::Serialize;
 
-/// Cache for sharing ports vector.
-pub static mut CACHE: OnceLock<FxHashMap<String, Vec<PortIdx>>> = OnceLock::new();
-/// WARN: thread-unsafe.
-pub fn cache_get() -> &'static FxHashMap<String, Vec<PortIdx>> {
-    #[allow(static_mut_refs)]
-    unsafe {
-        CACHE.get_or_init(FxHashMap::default)
-    }
-}
-/// WARN: thread-unsafe.
-pub fn cache_get_mut() -> &'static mut FxHashMap<String, Vec<PortIdx>> {
-    #[allow(static_mut_refs)]
-    unsafe {
-        CACHE.get_mut_or_init(FxHashMap::default)
-    }
-}
+///// Cache for sharing ports vector.
+//pub static mut CACHE: OnceLock<FxHashMap<String, Vec<PortIdx>>> = OnceLock::new();
+///// WARN: thread-unsafe.
+//pub fn get_cache() -> &'static FxHashMap<String, Vec<PortIdx>> {
+//    #[allow(static_mut_refs)]
+//    unsafe {
+//        CACHE.get_or_init(FxHashMap::default)
+//    }
+//}
+///// WARN: thread-unsafe.
+//pub fn get_mut_cache() -> &'static mut FxHashMap<String, Vec<PortIdx>> {
+//    #[allow(static_mut_refs)]
+//    unsafe {
+//        CACHE.get_mut_or_init(FxHashMap::default)
+//    }
+//}
 
 pub type Guid = u64;
 pub type Lid = u16;
@@ -45,7 +43,7 @@ pub enum NodeType {
 }
 
 /// Common topology information for all nodes (switch and ca).
-#[derive(Derivative, Default, Debug)]
+#[derive(Derivative, Default, Clone)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct NodeCommon {
     pub vendor_id: u16,
@@ -56,16 +54,23 @@ pub struct NodeCommon {
     pub port_num: PortIdx,
     pub node_type: NodeType,
     pub description: String,
+    pub label: u8,
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
     pub ports: FxHashMap<PortIdx, (PortSpec, Option<LinkSpec>)>,
+}
+
+impl Debug for NodeCommon {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.description)
+    }
 }
 
 /// IB switch spec.
 #[derive(Derivative, Default, Debug)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct SwitchSpec {
-    pub common: NodeCommon,
+    pub common: Rc<NodeCommon>,
 
     pub base_port: PortIdx,
     pub port_lid: Lid,
@@ -80,7 +85,7 @@ pub struct SwitchSpec {
 #[derive(Derivative, Default, Debug)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct CaSpec {
-    pub common: NodeCommon,
+    pub common: Rc<NodeCommon>,
 }
 
 /// Speed unit of a port.
@@ -130,6 +135,15 @@ pub struct LinkSpec {
     pub dst_node_guid: Guid,
 }
 
+/// Single Linear Forwarding Table entry. (FIB entry)
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct LftEntry {
+    pub lid: Lid,
+    pub port: PortIdx,
+    pub group: GroupIdx,
+    pub lid_state: IbActionType,
+}
+
 impl LinkSpec {
     pub fn swap(&self) -> Self {
         Self {
@@ -142,14 +156,14 @@ impl LinkSpec {
 }
 
 /// Group spec in routing table.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct GroupSpec {
     pub group_idx: GroupIdx,
-    pub ports: Cow<'static, Vec<PortIdx>>,
+    pub ports: Vec<PortIdx>,
 }
 
 /// IB fib rule.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct RawIbFibRule {
     /// match
     pub lid: Lid,
@@ -235,22 +249,33 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
         match self {
             IbAction::Drop => None,
             IbAction::NonOverwrite => None,
-            IbAction::Static(IbActionRef { action, owner }) => {
-                let link = owner.common.ports[&(*action as PortIdx)].1?;
+            IbAction::Static(IbActionRef {
+                action: port_idx,
+                owner,
+            }) => {
+                let link = owner.common.ports.get(port_idx as &PortIdx).unwrap().1?;
                 Some(Box::new(std::iter::once(link.dst_node_guid)))
             }
-            IbAction::AR(IbActionRef { action, owner })
-            | IbAction::HBF(IbActionRef { action, owner }) => Some(Box::new(
-                owner.groups[&(*action as GroupIdx)]
-                    .ports
-                    .iter()
-                    .filter_map(|port| {
-                        owner.common.ports[port]
-                            .1
-                            .as_ref()
-                            .map(|link| link.dst_node_guid)
-                    }),
-            )),
+            IbAction::AR(IbActionRef {
+                action: group_idx,
+                owner,
+            })
+            | IbAction::HBF(IbActionRef {
+                action: group_idx,
+                owner,
+            }) => {
+                let group = owner.groups.get(group_idx as &GroupIdx).unwrap();
+                Some(Box::new(group.ports.iter().filter_map(|port| {
+                    owner
+                        .common
+                        .ports
+                        .get(port)
+                        .unwrap()
+                        .1
+                        .as_ref()
+                        .map(|link| link.dst_node_guid)
+                })))
+            }
         }
     }
 }
