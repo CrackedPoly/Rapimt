@@ -19,8 +19,9 @@ enum NodeTopoType {
     VirtualNode = b'V',
 }
 
-pub fn label_3_stage(node_desc: &str) -> u8 {
+pub fn label_node_topo_type(node_desc: &str) -> u8 {
     let t = if node_desc.contains("-ZS-") || node_desc.contains("-UFM-") {
+        // UFM is also a host
         NodeTopoType::Host
     } else if node_desc.contains("-JR-") {
         NodeTopoType::LeafSwitch
@@ -96,8 +97,7 @@ impl VerificationPlugin for SimplePathExactRegexSetPlugin {
         let mut string_builder = String::from("INFO: ");
         for (idx, count) in count_map {
             string_builder.push_str(&regex_set.patterns()[idx]);
-            string_builder.push_str(": ");
-            string_builder.push_str(&count.to_string());
+            string_builder.push_str(format!(": {} ", count).as_str());
         }
         Ok(string_builder)
     }

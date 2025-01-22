@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# rapimt_internal = { path = "crates/rapimt_internal" }
+rapimt_core = { path = "../rapimt_core", features = ["lid"] }
+rapimt_io = { path = "../rapimt_io" }
+rapimt_ver = { path = "../rapimt_ver" }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.8.1"
 
 [[bin]]
-name = "ib_oneshot"
-path = "src/bin/ib_oneshot.rs"
+name = "ib_oneshot_check"
+path = "src/bin/ib_oneshot_check.rs"
