@@ -158,11 +158,25 @@ impl Action<Single> for TypedAction<'_> {
 
 impl<'a> UncodedAction<'a> for TypedAction<'a> {
     type N = &'a Rc<str>;
+    type P = &'a Rc<str>;
+
     fn get_type(&self) -> impl Into<u8> {
         match self {
             TypedAction::NonOverwrite => FwdActionType::DROP,
             TypedAction::Drop => FwdActionType::DROP,
             TypedAction::Typed(t) => t.origin.ports.borrow().get_index(t.idx).unwrap().mode,
+        }
+    }
+
+    fn get_ports(&self) -> Option<Box<dyn Iterator<Item = Self::P> + 'a>> {
+        match self {
+            TypedAction::NonOverwrite => None,
+            TypedAction::Drop => None,
+            TypedAction::Typed(t) => {
+                let ports = NonNull::new(t.origin.ports.as_ptr()).unwrap();
+                let port_info = unsafe { ports.as_ref().get_index(t.idx).unwrap() };
+                Some(Box::new(port_info.p_ports.iter()))
+            }
         }
     }
 
@@ -173,7 +187,7 @@ impl<'a> UncodedAction<'a> for TypedAction<'a> {
             TypedAction::Typed(t) => {
                 let ports = NonNull::new(t.origin.ports.as_ptr()).unwrap();
                 let port_info = unsafe { ports.as_ref().get_index(t.idx).unwrap() };
-                Some(Box::new(port_info.p_ports.iter()))
+                Some(Box::new(port_info.neighbors.iter()))
             }
         }
     }

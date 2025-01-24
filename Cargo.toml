@@ -15,6 +15,7 @@ members = ["crates/*"]
 [workspace.dependencies]
 bitvec = { version = "1" }
 fxhash = { version = "0.2.1" }
+funty = { version = "2.0.0" }
 indexmap = { version = "2.2.5" }
 log = { version = "0.4.25" }
 env_logger = { version = "0.11.6" }
@@ -49,8 +50,3 @@ tag = ["rapimt_internal/tag"]
 
 ## Support encoding 16-bit InfiniBand lid
 lid = ["rapimt_internal/lid"]
-
-[[bin]]
-doc = false
-name = "rimt"
-path = "crates/rapimt_cli/src/bin/rimt.rs"

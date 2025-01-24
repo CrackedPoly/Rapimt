@@ -1,14 +1,17 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::{
     ib::loader::{Guid, Lid},
-    prelude::{GroupIdx, GroupSpec, LftEntry, LinkSpec, NodeCommon, PortIdx, PortSpec},
+    prelude::{GroupIdx, GroupSpec, LftEntry, LinkSpec, NodeCommon, NodeType, PortIdx, PortSpec},
 };
 use csv::ReaderBuilder;
 use funty::Unsigned;
 use fxhash::{FxBuildHasher, FxHashMap};
 use rapimt_core::action::ib::IbActionType;
 use serde::{Deserialize, Deserializer};
+
+const SWITCH_LID_PORT_IDX: u8 = 0;
+const CA_LID_PORT_IDX: u8 = 1;
 
 fn deserialize_maybe_nan<'de, D, T: Deserialize<'de>>(
     deserializer: D,
@@ -187,6 +190,7 @@ pub fn load_node_commons(
             node_guid: nr.NodeGUID,
             port_guid: nr.PortGUID,
             port_num: nr.NumPorts,
+            lid: 0,
             node_type: nr.NodeType.try_into()?,
             description: nr.NodeDesc.to_string(),
             label: label_fn(nr.NodeDesc),
@@ -230,6 +234,7 @@ pub fn load_ports(
         let spec = PortSpec {
             port_guid: pr.PortGuid,
             port_num: pr.PortNum,
+            lid: pr.LID,
         };
         node_ports
             .entry(pr.NodeGuid)
@@ -242,18 +247,18 @@ pub fn load_ports(
 pub fn load_nodes(
     dir: impl AsRef<std::path::Path>,
     label_fn: fn(&str) -> u8,
-) -> Result<FxHashMap<Guid, Rc<NodeCommon>>, Box<dyn std::error::Error>> {
+) -> Result<FxHashMap<Guid, Arc<NodeCommon>>, Box<dyn std::error::Error>> {
     let node_common_file = dir.as_ref().join("nodes.csv");
     let nodes = load_node_commons(node_common_file, label_fn)?;
-    let mut nodes: FxHashMap<Guid, Rc<NodeCommon>> = nodes
+    let mut nodes: FxHashMap<Guid, Arc<NodeCommon>> = nodes
         .into_iter()
-        .map(|node| (node.node_guid, Rc::new(node)))
+        .map(|node| (node.node_guid, Arc::new(node)))
         .collect();
     // load ports
     let port_file = dir.as_ref().join("ports.csv");
     let node_ports = load_ports(port_file)?;
     for (guid, ports) in node_ports {
-        let node = Rc::get_mut(nodes.get_mut(&guid).unwrap()).unwrap();
+        let node = Arc::get_mut(nodes.get_mut(&guid).unwrap()).unwrap();
         for port in ports {
             // leave link to None for now
             node.ports.insert(port.port_num, (port, None));
@@ -264,17 +269,26 @@ pub fn load_nodes(
     let links = load_links(link_file)?;
     for link in links {
         let dst_node = nodes.get_mut(&link.dst_node_guid).unwrap();
-        let dst_port = Rc::make_mut(dst_node)
+        let dst_port = Arc::make_mut(dst_node)
             .ports
             .get_mut(&link.dst_port_idx)
             .unwrap();
         dst_port.1 = Some(link.swap());
         let src_node = nodes.get_mut(&link.src_node_guid).unwrap();
-        let src_port = Rc::make_mut(src_node)
+        let src_port = Arc::make_mut(src_node)
             .ports
             .get_mut(&link.src_port_idx)
             .unwrap();
         src_port.1 = Some(link);
+    }
+    // set lid of nodes
+    for node in nodes.values_mut() {
+        let lid_node_idx = match node.node_type {
+            NodeType::Switch => SWITCH_LID_PORT_IDX,
+            NodeType::HCA => CA_LID_PORT_IDX,
+        };
+        let node = Arc::make_mut(node);
+        node.lid = node.ports.get(&lid_node_idx).unwrap().0.lid;
     }
     Ok(nodes)
 }

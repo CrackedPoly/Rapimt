@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, fmt::Debug, rc::Rc};
+use std::{borrow::Borrow, fmt::Debug, sync::Arc};
 
 use derivative::Derivative;
 use funty::Unsigned;
@@ -43,8 +43,8 @@ pub enum NodeType {
 }
 
 /// Common topology information for all nodes (switch and ca).
-#[derive(Derivative, Default, Clone)]
-#[derivative(PartialEq, Eq, Hash)]
+#[derive(Derivative, Default, Clone, Serialize)]
+#[derivative(Debug, PartialEq, Eq, Hash)]
 pub struct NodeCommon {
     pub vendor_id: u16,
     pub device_id: u16,
@@ -52,29 +52,22 @@ pub struct NodeCommon {
     pub node_guid: Guid,
     pub port_guid: Guid,
     pub port_num: PortIdx,
+    pub lid: Lid,
+    #[serde(skip_serializing)]
     pub node_type: NodeType,
     pub description: String,
     pub label: u8,
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
+    #[serde(skip_serializing)]
     pub ports: FxHashMap<PortIdx, (PortSpec, Option<LinkSpec>)>,
-}
-
-impl Debug for NodeCommon {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.description)
-    }
 }
 
 /// IB switch spec.
 #[derive(Derivative, Default, Debug)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct SwitchSpec {
-    pub common: Rc<NodeCommon>,
-
-    pub base_port: PortIdx,
-    pub port_lid: Lid,
-    pub port_lmc: Lid,
+    pub common: Arc<NodeCommon>,
 
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -85,7 +78,7 @@ pub struct SwitchSpec {
 #[derive(Derivative, Default, Debug)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct CaSpec {
-    pub common: Rc<NodeCommon>,
+    pub common: Arc<NodeCommon>,
 }
 
 /// Speed unit of a port.
@@ -124,10 +117,11 @@ pub struct PortSpec {
     // TODO: add more fields
     pub port_guid: Guid,
     pub port_num: PortIdx,
+    pub lid: Lid,
 }
 
 /// Link spec between two ports.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize)]
 pub struct LinkSpec {
     pub src_port_idx: PortIdx,
     pub dst_port_idx: PortIdx,
@@ -234,6 +228,7 @@ impl<'a> Action<Single> for IbAction<'a> {
 
 impl<'a> UncodedAction<'a> for IbAction<'a> {
     type N = Guid;
+    type P = PortIdx;
 
     fn get_type(&self) -> impl Into<u8> {
         match self {
@@ -275,6 +270,22 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
                         .as_ref()
                         .map(|link| link.dst_node_guid)
                 })))
+            }
+        }
+    }
+
+    fn get_ports(&self) -> Option<Box<dyn Iterator<Item = Self::P> + 'a>> {
+        match self {
+            IbAction::Drop => None,
+            IbAction::NonOverwrite => None,
+            IbAction::Static(IbActionRef { action, owner }) => {
+                let link = owner.common.ports.get(action as &PortIdx).unwrap().1?;
+                Some(Box::new(std::iter::once(link.src_port_idx)))
+            }
+            IbAction::AR(IbActionRef { action, owner })
+            | IbAction::HBF(IbActionRef { action, owner }) => {
+                let group = owner.groups.get(action as &GroupIdx).unwrap();
+                Some(Box::new(group.ports.iter().copied()))
             }
         }
     }

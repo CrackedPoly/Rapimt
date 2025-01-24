@@ -10,6 +10,7 @@ use crate::r#match::{
     predicate::{Predicate, PredicateInner},
 };
 
+#[repr(transparent)]
 pub struct NoPredicateEngine<U: Unsigned> {
     _phantom: PhantomData<U>,
 }
@@ -58,6 +59,9 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct NoPredicate<U: Unsigned>(U);
+
+unsafe impl<U: Unsigned> Send for NoPredicate<U> {}
+unsafe impl<U: Unsigned> Sync for NoPredicate<U> {}
 
 impl<U: Unsigned> Display for NoPredicate<U> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> FmtResult {

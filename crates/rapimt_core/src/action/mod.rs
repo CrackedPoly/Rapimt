@@ -34,7 +34,7 @@ pub mod tree_action;
 use std::{
     fmt::{Debug, Display},
     hash::Hash,
-    rc::Rc,
+    rc::Rc, sync::Arc,
 };
 
 pub trait ActionType:
@@ -79,30 +79,6 @@ pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
     fn from_single(single: Self::S) -> Self;
 }
 
-impl<T: Dimension, A: Action<T>> Action<T> for Rc<A> {
-    type S = A::S;
-
-    fn default_action() -> Self {
-        Rc::new(A::default_action())
-    }
-
-    fn no_overwrite() -> Self {
-        Rc::new(A::no_overwrite())
-    }
-
-    fn overwrite(&self, rhs: &Self) -> Self {
-        Rc::new(self.as_ref().overwrite(rhs.as_ref()))
-    }
-
-    fn overwrite_(&mut self, rhs: &Self) {
-        Rc::make_mut(self).overwrite_(rhs.as_ref());
-    }
-
-    fn from_single(single: Self::S) -> Self {
-        Rc::new(A::from_single(single))
-    }
-}
-
 /// Unencoded action on a specific device.
 ///
 /// It may have rich information such as device name,
@@ -111,8 +87,10 @@ impl<T: Dimension, A: Action<T>> Action<T> for Rc<A> {
 pub trait UncodedAction<'a>: Action<Single> + Clone {
     /// Type of neighbor representation.
     type N;
+    type P;
 
     fn get_type(&self) -> impl Into<u8>;
+    fn get_ports(&self) -> Option<Box<dyn Iterator<Item = Self::P> + 'a>>;
     fn get_next_hops(&self) -> Option<Box<dyn Iterator<Item = Self::N> + 'a>>;
 }
 
@@ -210,6 +188,30 @@ pub trait Actions: Action<Multiple> + Clone + Hash + Eq {
     }
 }
 
+impl<T: Dimension, A: Action<T>> Action<T> for Rc<A> {
+    type S = A::S;
+
+    fn default_action() -> Self {
+        Rc::new(A::default_action())
+    }
+
+    fn no_overwrite() -> Self {
+        Rc::new(A::no_overwrite())
+    }
+
+    fn overwrite(&self, rhs: &Self) -> Self {
+        Rc::new(self.as_ref().overwrite(rhs.as_ref()))
+    }
+
+    fn overwrite_(&mut self, rhs: &Self) {
+        Rc::make_mut(self).overwrite_(rhs.as_ref());
+    }
+
+    fn from_single(single: Self::S) -> Self {
+        Rc::new(A::from_single(single))
+    }
+}
+
 impl<A: Actions> Actions for Rc<A> {
     fn len(&self) -> usize {
         self.as_ref().len()
@@ -225,5 +227,47 @@ impl<A: Actions> Actions for Rc<A> {
     }
     fn index_mut(&mut self, index: usize) -> &mut Self::S {
         Rc::make_mut(self).index_mut(index)
+    }
+}
+
+impl<A: Actions> Action<Multiple> for Arc<A> {
+    type S = A::S;
+
+    fn default_action() -> Self {
+        Arc::new(A::default_action())
+    }
+
+    fn no_overwrite() -> Self {
+        Arc::new(A::no_overwrite())
+    }
+
+    fn overwrite(&self, rhs: &Self) -> Self {
+        Arc::new(self.as_ref().overwrite(rhs.as_ref()))
+    }
+
+    fn overwrite_(&mut self, rhs: &Self) {
+        Arc::make_mut(self).overwrite_(rhs.as_ref());
+    }
+
+    fn from_single(single: Self::S) -> Self {
+        Arc::new(A::from_single(single))
+    }
+}
+
+impl<A: Actions> Actions for Arc<A> {
+    fn len(&self) -> usize {
+        self.as_ref().len()
+    }
+    fn diff(&self, rhs: &Self) -> usize {
+        self.as_ref().diff(rhs.as_ref())
+    }
+    fn resize_(&mut self, to: usize, offset: usize) {
+        Arc::make_mut(self).resize_(to, offset);
+    }
+    fn index(&self, index: usize) -> &Self::S {
+        self.as_ref().index(index)
+    }
+    fn index_mut(&mut self, index: usize) -> &mut Self::S {
+        Arc::make_mut(self).index_mut(index)
     }
 }

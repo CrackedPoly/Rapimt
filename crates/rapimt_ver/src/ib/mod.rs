@@ -1,39 +1,85 @@
-use std::{error::Error, rc::Rc};
+use std::{ops::Deref, sync::Arc};
 
+use funty::Unsigned;
 use fxhash::FxHashMap;
 use petgraph::graph::{DiGraph, NodeIndex};
-use rapimt_core::{
-    action::Actions,
-    r#match::predicate::{Predicate, PredicateInner},
-};
-use rapimt_io::ib::loader::{Guid, Lid, NodeCommon};
+use rapimt_io::ib::loader::{Guid, Lid, LinkSpec, NodeCommon};
+use serde::Serialize;
 
 pub mod requirement;
 pub mod snapshot;
 
 pub type LabelFn = fn(&str) -> u8;
 
-pub type VeriReport = String;
-
-pub struct CachedFwdGraph {
-    graph: DiGraph<Rc<NodeCommon>, ()>,
+#[derive(Debug)]
+pub struct CachedFwdGraph<NID: Unsigned, Edge, R: PluginReportLike> {
+    /// TODO: replace NodeCommon with a trait
+    graph: DiGraph<Arc<NodeCommon>, Edge>,
     /// map from guid to node index
-    #[allow(unused)]
-    node_map: FxHashMap<Guid, NodeIndex>,
+    node_map: FxHashMap<NID, NodeIndex>,
     /// Cached result of all verification plugins. It is required to NOT name two plugins with the
     /// same name.
-    veri_cache: FxHashMap<String, Result<VeriReport, Box<dyn Error>>>,
+    /// TODO: replace cache assess with trait
+    report_cache: FxHashMap<String, R>,
 }
 
-pub trait VerificationPlugin {
+unsafe impl<NID: Unsigned, Edge, R: PluginReportLike> Sync for CachedFwdGraph<NID, Edge, R> {}
+
+pub trait PluginReportLike: Send + Sync {}
+
+pub trait PluginExecutorLike<R: PluginReportLike>: Sync {
+    /// Unique id of a node
+    type NID: Unsigned;
+    /// Edge type
+    type Edge;
+
+    /// execute the plugin and put report in the cache
+    fn _execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, R>);
     fn get_name(&self) -> &str;
-    fn execute(&self, cgraph: &mut CachedFwdGraph) -> Result<VeriReport, Box<dyn Error>>;
-    fn review(&self, report: &VeriReport) -> Result<bool, Box<dyn Error>>;
+
+    fn execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, R>) {
+        if !cgraph.report_cache.contains_key(self.get_name()) {
+            self._execute(cgraph);
+        }
+    }
 }
 
-pub trait SnapshotQuery<'a, A: Actions, P: PredicateInner> {
+impl PluginExecutorLike<IbPluginReport>
+    for Box<dyn PluginExecutorLike<IbPluginReport, NID = Guid, Edge = LinkSpec>>
+{
+    type NID = Guid;
+
+    type Edge = LinkSpec;
+
+    fn _execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, IbPluginReport>) {
+        self.deref()._execute(cgraph)
+    }
+
+    fn get_name(&self) -> &str {
+        self.deref().get_name()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IbPluginReport {
+    to_lid: Option<Lid>,
+    to_guid: Option<Guid>,
+    should_report: bool,
+    report: Result<String, String>,
+}
+
+impl PluginReportLike for IbPluginReport {}
+
+pub trait SnapshotQuery<R: PluginReportLike> {
+    type ID: Unsigned;
+    type Edge;
+
+    /// List all alerts
+    fn list_alert(&self) -> Vec<R>;
     /// Get single EC
-    fn query_ec(&self, lid: Lid) -> Option<(&Predicate<P>, &A)>;
+    fn query_dag(&self, lid: Lid) -> Option<Vec<Self::Edge>>;
+    /// Get a DAG from some source of an EC
+    fn query_dag_from(&self, lid: Lid, src: Self::ID) -> Option<Vec<Self::Edge>>;
     /// Get the number of ECs
     fn query_num_ec(&self) -> usize;
 }

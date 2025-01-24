@@ -1,11 +1,11 @@
-use std::error::Error;
-
 use fxhash::FxHashMap;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use petgraph::algo::all_simple_paths;
-use regex::bytes::RegexSetBuilder;
+use rapimt_io::ib::loader::{Guid, LinkSpec};
+use regex::bytes::{RegexSet, RegexSetBuilder};
 
-use super::{VeriReport, VerificationPlugin};
+use super::CachedFwdGraph;
+use super::{IbPluginReport, PluginExecutorLike};
 
 #[derive(IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
@@ -39,6 +39,7 @@ pub fn label_node_topo_type(node_desc: &str) -> u8 {
 pub struct SimplePathExactRegexSetPlugin {
     name: String,
     pattern_count: Vec<(String, usize)>,
+    regex_set: RegexSet,
 }
 
 impl SimplePathExactRegexSetPlugin {
@@ -47,26 +48,33 @@ impl SimplePathExactRegexSetPlugin {
         II: IntoIterator<Item = (S, usize)>,
         S: AsRef<str>,
     {
+        let pattern_count: Vec<_> = patterns
+            .into_iter()
+            .map(|(s, c)| (s.as_ref().to_string(), c))
+            .collect();
+        let regex_set = RegexSetBuilder::new(pattern_count.iter().map(|(s, _)| format!("^{}$", s)))
+            .build()
+            .unwrap();
         Self {
             name: name.to_string(),
-            pattern_count: patterns
-                .into_iter()
-                .map(|(s, c)| (s.as_ref().to_string(), c))
-                .collect(),
+            pattern_count,
+            regex_set,
         }
     }
 }
 
-impl VerificationPlugin for SimplePathExactRegexSetPlugin {
+impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
+    type NID = Guid;
+    type Edge = LinkSpec;
+
     fn get_name(&self) -> &str {
         &self.name
     }
 
-    fn execute(&self, cgraph: &mut super::CachedFwdGraph) -> Result<VeriReport, Box<dyn Error>> {
-        // build exact regex set with ^$ anchors
-        let regex_set =
-            RegexSetBuilder::new(self.pattern_count.iter().map(|(s, _)| format!("^{}$", s)))
-                .build()?;
+    fn _execute(&self, cgraph: &mut CachedFwdGraph<Guid, LinkSpec, IbPluginReport>) {
+        // we clone the regexset, the recommended way.
+        // (https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention)
+        let regex_set = self.regex_set.clone();
         let g = &cgraph.graph;
         // we only verify graphs that have at least one host
         let dsts: Vec<_> = g
@@ -74,35 +82,74 @@ impl VerificationPlugin for SimplePathExactRegexSetPlugin {
             .filter(|i| g[*i].label == NodeTopoType::Host.into())
             .collect();
         if dsts.is_empty() {
-            return Ok("INFO: No host found in the graph, skip it.".into());
+            cgraph.report_cache.insert(
+                self.get_name().to_string(),
+                IbPluginReport {
+                    to_lid: None,
+                    to_guid: None,
+                    should_report: false,
+                    report: Ok("INFO: No host found in the graph, skip it.".into()),
+                },
+            );
+            return;
+        } else if dsts.len() > 1 {
+            cgraph.report_cache.insert(
+                self.get_name().to_string(),
+                IbPluginReport {
+                    to_lid: None,
+                    to_guid: None,
+                    should_report: false,
+                    report: Err("ERROR: More than one host found in the graph.".into()),
+                },
+            );
+            return;
         }
         // pattern count
         let mut count_map = FxHashMap::default();
-        for dst in dsts {
-            for src in g.node_indices() {
-                if src == dst || g[src].label != NodeTopoType::LeafSwitch.into() {
-                    continue;
+        let dst = dsts[0];
+        for src in g.node_indices() {
+            if src == dst || g[src].label != NodeTopoType::LeafSwitch.into() {
+                continue;
+            }
+            for path in all_simple_paths::<Vec<_>, _>(g, src, dst, 0, None) {
+                let mut symbols = Vec::new();
+                for node in path {
+                    symbols.push(g[node].label);
                 }
-                for path in all_simple_paths::<Vec<_>, _>(g, src, dst, 0, None) {
-                    let mut symbols = Vec::new();
-                    for node in path {
-                        symbols.push(g[node].label);
-                    }
-                    for pattern_idx in regex_set.matches(&symbols) {
-                        *count_map.entry(pattern_idx).or_insert(0usize) += 1;
-                    }
+                for pattern_idx in regex_set.matches(&symbols) {
+                    *count_map.entry(pattern_idx).or_insert(0usize) += 1;
                 }
             }
         }
-        let mut string_builder = String::from("INFO: ");
+        let mut string_builder = String::new();
+        let mut mismatch = false;
         for (idx, count) in count_map {
+            if count != self.pattern_count[idx].1 {
+                mismatch = true;
+            }
             string_builder.push_str(&regex_set.patterns()[idx]);
             string_builder.push_str(format!(": {} ", count).as_str());
         }
-        Ok(string_builder)
-    }
-
-    fn review(&self, _report: &VeriReport) -> Result<bool, Box<dyn Error>> {
-        todo!()
+        if mismatch {
+            cgraph.report_cache.insert(
+                self.get_name().to_string(),
+                IbPluginReport {
+                    to_lid: Some(g[dst].lid),
+                    to_guid: Some(g[dst].node_guid),
+                    should_report: true,
+                    report: Ok(format!("ERROR: {}", string_builder)),
+                },
+            );
+        } else {
+            cgraph.report_cache.insert(
+                self.get_name().to_string(),
+                IbPluginReport {
+                    to_lid: Some(g[dst].lid),
+                    to_guid: Some(g[dst].node_guid),
+                    should_report: false,
+                    report: Ok(format!("INFO: {}", string_builder)),
+                },
+            );
+        }
     }
 }

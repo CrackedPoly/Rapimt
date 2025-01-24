@@ -7,8 +7,10 @@ edition = "2021"
 rapimt_core = { path = "../rapimt_core", features = ["lid"] }
 rapimt_im = { path = "../rapimt_im" }
 rapimt_io = { path = "../rapimt_io" }
+serde = { workspace = true }
 fxhash = { workspace = true }
 num_enum = { workspace = true }
+funty = { workspace = true }
 regex = { version = "1.11.1" }
 petgraph = { version = "0.7.1" }
 rayon = { version = "1.10.0" }

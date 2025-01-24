@@ -1,7 +1,7 @@
-use std::{error::Error, path::PathBuf, rc::Rc};
+use std::{error::Error, path::PathBuf, sync::Arc};
 
 use fxhash::{FxBuildHasher, FxHashMap};
-use petgraph::graph::DiGraph;
+use petgraph::{graph::DiGraph, visit::Bfs};
 use rapimt_core::{
     action::{ib::IbActionType, ActionEncoder, Actions, Multiple, UncodedAction},
     r#match::{
@@ -17,10 +17,11 @@ use rapimt_im::{
 };
 use rapimt_io::ib::{
     db_csv_parser::csv_parser::{load_groups, load_lft, load_nodes},
-    loader::{CaSpec, FusedIdx, Guid, LftEntry, Lid, NodeType, RawAction, SwitchSpec},
+    loader::{CaSpec, FusedIdx, Guid, LftEntry, Lid, LinkSpec, NodeType, RawAction, SwitchSpec},
 };
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-use super::{CachedFwdGraph, LabelFn, SnapshotQuery, VerificationPlugin};
+use super::{CachedFwdGraph, IbPluginReport, LabelFn, PluginExecutorLike, SnapshotQuery};
 
 pub struct IbDataPlaneConfig<'p, ME>
 where
@@ -153,8 +154,9 @@ where
     }
 }
 
-type ActionsRepr = Rc<Vec<FusedIdx>>;
+type ActionsRepr = Arc<Vec<FusedIdx>>;
 type IM<P> = InverseModel<ActionsRepr, P, Multiple, Vec<(ActionsRepr, Predicate<P>)>>;
+type AnyPlugin<R> = Box<dyn PluginExecutorLike<R, NID = Guid, Edge = LinkSpec>>;
 
 pub struct SnapshotVerifier<'p, ME>
 where
@@ -168,9 +170,9 @@ where
     // fast lookup actions by predicate
     query_cache: FxHashMap<Predicate<ME::P>, ActionsRepr>,
     // forwarding graphs
-    graphs: FxHashMap<ActionsRepr, CachedFwdGraph>,
+    graphs: FxHashMap<ActionsRepr, CachedFwdGraph<Guid, LinkSpec, IbPluginReport>>,
     // verification plugins
-    plugins: Vec<Box<dyn VerificationPlugin>>,
+    plugins: Vec<AnyPlugin<IbPluginReport>>,
 }
 
 impl<'p, ME> SnapshotVerifier<'p, ME>
@@ -225,6 +227,7 @@ where
         for (action, predicate) in self.im.iter() {
             self.query_cache.insert(predicate.clone(), action.clone());
         }
+        // TODO: refactor this bunch of code with traits: DataPlane, Port, Link, Node, Graph
         // add to forwarding graphs if there are new action patterns
         for (action, _) in self.im.iter() {
             self.graphs.entry(action.clone()).or_insert_with(|| {
@@ -240,46 +243,48 @@ where
                 for (src_guid, src) in self.dp.switch_specs.iter() {
                     let idx = self.dp.switch_order.get(src_guid).unwrap();
                     let decoded_action = src.decode(*action.index(*idx));
-                    if let Some(it) = decoded_action.get_next_hops() {
-                        for dst_guid in it {
-                            // may contains CA nodes
-                            if !self.dp.switch_specs.contains_key(&dst_guid) {
-                                node_map.entry(dst_guid).or_insert_with(|| {
-                                    let dst = self.dp.ca_specs.get(&dst_guid).unwrap();
-                                    graph.add_node(dst.common.clone())
-                                });
+                    if let Some(it) = decoded_action.get_ports() {
+                        for src_port_idx in it {
+                            let (_, link) = src.common.ports.get(&src_port_idx).unwrap();
+                            if let Some(link) = link {
+                                let dst_guid = link.dst_node_guid;
+                                // may contains CA nodes
+                                if !self.dp.switch_specs.contains_key(&dst_guid) {
+                                    node_map.entry(dst_guid).or_insert_with(|| {
+                                        let dst = self.dp.ca_specs.get(&dst_guid).unwrap();
+                                        graph.add_node(dst.common.clone())
+                                    });
+                                }
+                                graph.add_edge(
+                                    *node_map.get(src_guid).unwrap(),
+                                    *node_map.get(&dst_guid).unwrap(),
+                                    *link,
+                                );
                             }
-                            graph.add_edge(
-                                *node_map.get(src_guid).unwrap(),
-                                *node_map.get(&dst_guid).unwrap(),
-                                (),
-                            );
                         }
                     }
                 }
                 CachedFwdGraph {
                     graph,
-                    veri_cache: FxHashMap::default(),
                     node_map,
+                    report_cache: FxHashMap::default(),
                 }
             });
         }
-        // run verification plugins
+        // run verification plugins if result not found in cache
         for plugin in &self.plugins {
-            for (_, graph) in self.graphs.iter_mut() {
-                let name = plugin.get_name();
-                if !graph.veri_cache.contains_key(name) {
-                    let result = plugin.execute(graph);
-                    println!("Verification plugin {:?} report: {:?}", name, result);
-                    graph.veri_cache.insert(name.to_string(), result);
+            let name = plugin.get_name();
+            self.graphs.par_iter_mut().for_each(|(_, graph)| {
+                if !graph.report_cache.contains_key(name) {
+                    plugin.execute(graph);
                 }
-            }
+            });
         }
         Ok(())
     }
 
     /// Register a verification plugin.
-    pub fn register_plugin(&mut self, plugin: Box<dyn VerificationPlugin>) {
+    pub fn register_plugin(&mut self, plugin: AnyPlugin<IbPluginReport>) {
         self.plugins.push(plugin);
     }
 
@@ -287,30 +292,74 @@ where
     pub fn verify(&mut self) -> Result<(), Box<dyn Error>> {
         for plugin in &self.plugins {
             let name = plugin.get_name();
-            for (_, graph) in self.graphs.iter_mut() {
-                if !graph.veri_cache.contains_key(name) {
-                    let result = plugin.execute(graph);
-                    graph.veri_cache.insert(name.to_string(), result);
+            self.graphs.par_iter_mut().for_each(|(_, graph)| {
+                if !graph.report_cache.contains_key(name) {
+                    plugin.execute(graph);
                 }
-            }
+            });
         }
         Ok(())
     }
 }
 
-impl<'p, ME> SnapshotQuery<'p, ActionsRepr, ME::P> for SnapshotVerifier<'p, ME>
+impl<'p, ME> SnapshotQuery<IbPluginReport> for SnapshotVerifier<'p, ME>
 where
     ME: MatchEncoder<'p>,
 {
-    fn query_ec(&self, lid: Lid) -> Option<(&Predicate<ME::P>, &ActionsRepr)> {
+    type ID = Guid;
+    type Edge = LinkSpec;
+
+    fn list_alert(&self) -> Vec<IbPluginReport> {
+        let mut alerts = vec![];
+        for graph in self.graphs.values() {
+            for report in graph.report_cache.values() {
+                if report.should_report {
+                    alerts.push(report.clone());
+                }
+            }
+        }
+        alerts
+    }
+
+    fn query_dag(&self, lid: Lid) -> Option<Vec<Self::Edge>> {
         let p = self.dp.encode_lid(lid);
-        self.query_cache.get_key_value(&p)
+        let acts = self.query_cache.get(&p)?;
+        let g = &self.graphs.get(acts)?.graph;
+
+        let mut links = vec![];
+        for e in g.edge_references() {
+            links.push(*e.weight());
+        }
+        Some(links)
+    }
+
+    fn query_dag_from(&self, lid: Lid, src: Guid) -> Option<Vec<Self::Edge>> {
+        // HARDCODE: passed `src` is a CA node, we need to find the access switch.
+        let ca = self.dp.ca_specs.get(&src)?;
+        let src = ca.common.ports.get(&1)?.1?.dst_node_guid;
+
+        let p = self.dp.encode_lid(lid);
+        let acts = self.query_cache.get(&p)?;
+        let cg = &self.graphs.get(acts)?;
+
+        let mut links = vec![];
+        let src_idx = cg.node_map.get(&src)?;
+        let mut bfs = Bfs::new(&cg.graph, *src_idx);
+        while let Some(nx) = bfs.next(&cg.graph) {
+            for e in cg.graph.edges(nx) {
+                links.push(*e.weight());
+            }
+        }
+        Some(links)
     }
 
     fn query_num_ec(&self) -> usize {
         self.im.len()
     }
 }
+
+unsafe impl<'p, ME> Send for SnapshotVerifier<'p, ME> where ME: MatchEncoder<'p> {}
+unsafe impl<'p, ME> Sync for SnapshotVerifier<'p, ME> where ME: MatchEncoder<'p> {}
 
 #[cfg(test)]
 mod tests {}

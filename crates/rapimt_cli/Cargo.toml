@@ -7,10 +7,15 @@ edition = "2021"
 rapimt_core = { path = "../rapimt_core", features = ["lid"] }
 rapimt_io = { path = "../rapimt_io" }
 rapimt_ver = { path = "../rapimt_ver" }
+serde = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
-axum = "0.8.1"
+axum = { version = "0.8.1", features = ["macros"] }
 
 [[bin]]
 name = "ib_oneshot_check"
 path = "src/bin/ib_oneshot_check.rs"
+
+[[bin]]
+name = "ib_server"
+path = "src/bin/ib_server.rs"
