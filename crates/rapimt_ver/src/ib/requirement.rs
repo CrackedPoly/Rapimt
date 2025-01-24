@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use fxhash::FxHashMap;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use petgraph::algo::all_simple_paths;
@@ -37,7 +39,7 @@ pub fn label_node_topo_type(node_desc: &str) -> u8 {
 
 /// Require that all simple path have to match exactly one of regex in a regex set.
 pub struct SimplePathExactRegexSetPlugin {
-    name: String,
+    name: Arc<str>,
     pattern_count: Vec<(String, usize)>,
     regex_set: RegexSet,
 }
@@ -56,7 +58,7 @@ impl SimplePathExactRegexSetPlugin {
             .build()
             .unwrap();
         Self {
-            name: name.to_string(),
+            name: name.into(),
             pattern_count,
             regex_set,
         }
@@ -65,13 +67,13 @@ impl SimplePathExactRegexSetPlugin {
 
 impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
     type NID = Guid;
-    type Edge = LinkSpec;
+    type Edge = Arc<LinkSpec>;
 
-    fn get_name(&self) -> &str {
-        &self.name
+    fn get_name(&self) -> Arc<str> {
+        self.name.clone()
     }
 
-    fn _execute(&self, cgraph: &mut CachedFwdGraph<Guid, LinkSpec, IbPluginReport>) {
+    fn _execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, IbPluginReport>) {
         // we clone the regexset, the recommended way.
         // (https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention)
         let regex_set = self.regex_set.clone();
@@ -83,7 +85,7 @@ impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
             .collect();
         if dsts.is_empty() {
             cgraph.report_cache.insert(
-                self.get_name().to_string(),
+                self.get_name(),
                 IbPluginReport {
                     to_lid: None,
                     to_guid: None,
@@ -94,7 +96,7 @@ impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
             return;
         } else if dsts.len() > 1 {
             cgraph.report_cache.insert(
-                self.get_name().to_string(),
+                self.get_name(),
                 IbPluginReport {
                     to_lid: None,
                     to_guid: None,
@@ -132,7 +134,7 @@ impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
         }
         if mismatch {
             cgraph.report_cache.insert(
-                self.get_name().to_string(),
+                self.get_name(),
                 IbPluginReport {
                     to_lid: Some(g[dst].lid),
                     to_guid: Some(g[dst].node_guid),
@@ -142,7 +144,7 @@ impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
             );
         } else {
             cgraph.report_cache.insert(
-                self.get_name().to_string(),
+                self.get_name(),
                 IbPluginReport {
                     to_lid: Some(g[dst].lid),
                     to_guid: Some(g[dst].node_guid),

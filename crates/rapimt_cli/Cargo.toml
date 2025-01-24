@@ -11,6 +11,10 @@ serde = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8.1", features = ["macros"] }
+tower-http = { version = "0.6.2", features = ["cors"] }
+
+[profile.release]
+debug = true
 
 [[bin]]
 name = "ib_oneshot_check"

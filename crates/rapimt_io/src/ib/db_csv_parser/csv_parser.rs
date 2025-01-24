@@ -276,13 +276,13 @@ pub fn load_nodes(
             .ports
             .get_mut(&link.dst_port_idx)
             .unwrap();
-        dst_port.1 = Some(link.swap());
+        dst_port.1 = Some(Arc::new(link.swap()));
         let src_node = nodes.get_mut(&link.src_node_guid).unwrap();
         let src_port = Arc::make_mut(src_node)
             .ports
             .get_mut(&link.src_port_idx)
             .unwrap();
-        src_port.1 = Some(link);
+        src_port.1 = Some(Arc::new(link));
     }
     // set lid of nodes
     for node in nodes.values_mut() {
@@ -324,7 +324,7 @@ pub fn load_groups(
                     new_ports.push(p)
                 }
             }
-            let new_ports = Arc::new(new_ports);
+            let new_ports: Arc<[PortIdx]> = new_ports.into();
             get_mut_cache().insert(gr.Ports.to_string(), new_ports.clone());
             spec.ports = new_ports;
         }

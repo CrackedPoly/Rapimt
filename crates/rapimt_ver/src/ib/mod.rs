@@ -20,7 +20,7 @@ pub struct CachedFwdGraph<NID: Unsigned, Edge, R: PluginReportLike> {
     /// Cached result of all verification plugins. It is required to NOT name two plugins with the
     /// same name.
     /// TODO: replace cache assess with trait
-    report_cache: FxHashMap<String, R>,
+    report_cache: FxHashMap<Arc<str>, R>,
 }
 
 unsafe impl<NID: Unsigned, Edge, R: PluginReportLike> Sync for CachedFwdGraph<NID, Edge, R> {}
@@ -35,27 +35,27 @@ pub trait PluginExecutorLike<R: PluginReportLike>: Sync {
 
     /// execute the plugin and put report in the cache
     fn _execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, R>);
-    fn get_name(&self) -> &str;
+    fn get_name(&self) -> Arc<str>;
 
     fn execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, R>) {
-        if !cgraph.report_cache.contains_key(self.get_name()) {
+        if !cgraph.report_cache.contains_key(&self.get_name()) {
             self._execute(cgraph);
         }
     }
 }
 
 impl PluginExecutorLike<IbPluginReport>
-    for Box<dyn PluginExecutorLike<IbPluginReport, NID = Guid, Edge = LinkSpec>>
+    for Box<dyn PluginExecutorLike<IbPluginReport, NID = Guid, Edge = Arc<LinkSpec>>>
 {
     type NID = Guid;
 
-    type Edge = LinkSpec;
+    type Edge = Arc<LinkSpec>;
 
     fn _execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, IbPluginReport>) {
         self.deref()._execute(cgraph)
     }
 
-    fn get_name(&self) -> &str {
+    fn get_name(&self) -> Arc<str> {
         self.deref().get_name()
     }
 }

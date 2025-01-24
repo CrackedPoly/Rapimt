@@ -72,7 +72,7 @@ fn parse_group_entry(pair: Pair<'_, Rule>) -> GroupSpec {
                     for p1 in p.into_inner() {
                         new_ports.push(parse_dec_ident(p1));
                     }
-                    let new_ports = Arc::new(new_ports);
+                    let new_ports: Arc<[PortIdx]> = new_ports.into();
                     get_mut_cache().insert(key, new_ports.clone());
                     group.ports = new_ports;
                 }

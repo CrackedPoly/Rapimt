@@ -12,16 +12,16 @@ use rapimt_core::action::{ib::IbActionType, Action, ActionEncoder, Single, Uncod
 use serde::Serialize;
 
 ///// Cache for sharing ports vector.
-pub static mut CACHE: OnceLock<FxHashMap<String, Arc<Vec<PortIdx>>>> = OnceLock::new();
+pub static mut CACHE: OnceLock<FxHashMap<String, Arc<[PortIdx]>>> = OnceLock::new();
 /// WARN: thread-unsafe.
-pub fn get_cache() -> &'static FxHashMap<String, Arc<Vec<PortIdx>>> {
+pub fn get_cache() -> &'static FxHashMap<String, Arc<[PortIdx]>> {
     #[allow(static_mut_refs)]
     unsafe {
         CACHE.get_or_init(FxHashMap::default)
     }
 }
 /// WARN: thread-unsafe.
-pub fn get_mut_cache() -> &'static mut FxHashMap<String, Arc<Vec<PortIdx>>> {
+pub fn get_mut_cache() -> &'static mut FxHashMap<String, Arc<[PortIdx]>> {
     #[allow(static_mut_refs)]
     unsafe {
         CACHE.get_mut_or_init(FxHashMap::default)
@@ -64,7 +64,7 @@ pub struct NodeCommon {
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
     #[serde(skip_serializing)]
-    pub ports: FxHashMap<PortIdx, (PortSpec, Option<LinkSpec>)>,
+    pub ports: FxHashMap<PortIdx, (PortSpec, Option<Arc<LinkSpec>>)>,
 }
 
 /// IB switch spec.
@@ -157,7 +157,7 @@ impl LinkSpec {
 #[derive(Default, Debug, Clone)]
 pub struct GroupSpec {
     pub group_idx: GroupIdx,
-    pub ports: Arc<Vec<PortIdx>>,
+    pub ports: Arc<[PortIdx]>,
 }
 
 /// IB fib rule.
@@ -252,7 +252,7 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
                 action: port_idx,
                 owner,
             }) => {
-                let link = owner.common.ports.get(port_idx as &PortIdx).unwrap().1?;
+                let link = owner.common.ports.get(port_idx as &PortIdx)?.1.as_ref()?;
                 Some(Box::new(std::iter::once(link.dst_node_guid)))
             }
             IbAction::AR(IbActionRef {
@@ -263,13 +263,12 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
                 action: group_idx,
                 owner,
             }) => {
-                let group = owner.groups.get(group_idx as &GroupIdx).unwrap();
+                let group = owner.groups.get(group_idx as &GroupIdx)?;
                 Some(Box::new(group.ports.iter().filter_map(|port| {
                     owner
                         .common
                         .ports
-                        .get(port)
-                        .unwrap()
+                        .get(port)?
                         .1
                         .as_ref()
                         .map(|link| link.dst_node_guid)
@@ -283,12 +282,12 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
             IbAction::Drop => None,
             IbAction::NonOverwrite => None,
             IbAction::Static(IbActionRef { action, owner }) => {
-                let link = owner.common.ports.get(action as &PortIdx).unwrap().1?;
+                let link = owner.common.ports.get(action as &PortIdx)?.1.as_ref()?;
                 Some(Box::new(std::iter::once(link.src_port_idx)))
             }
             IbAction::AR(IbActionRef { action, owner })
             | IbAction::HBF(IbActionRef { action, owner }) => {
-                let group = owner.groups.get(action as &GroupIdx).unwrap();
+                let group = owner.groups.get(action as &GroupIdx)?;
                 Some(Box::new(group.ports.iter().copied()))
             }
         }

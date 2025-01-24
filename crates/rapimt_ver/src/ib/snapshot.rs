@@ -156,7 +156,7 @@ where
 
 type ActionsRepr = Arc<Vec<FusedIdx>>;
 type IM<P> = InverseModel<ActionsRepr, P, Multiple, Vec<(ActionsRepr, Predicate<P>)>>;
-type AnyPlugin<R> = Box<dyn PluginExecutorLike<R, NID = Guid, Edge = LinkSpec>>;
+type AnyPlugin<R> = Box<dyn PluginExecutorLike<R, NID = Guid, Edge = Arc<LinkSpec>>>;
 
 pub struct SnapshotVerifier<'p, ME>
 where
@@ -170,7 +170,7 @@ where
     // fast lookup actions by predicate
     query_cache: FxHashMap<Predicate<ME::P>, ActionsRepr>,
     // forwarding graphs
-    graphs: FxHashMap<ActionsRepr, CachedFwdGraph<Guid, LinkSpec, IbPluginReport>>,
+    graphs: FxHashMap<ActionsRepr, CachedFwdGraph<Guid, Arc<LinkSpec>, IbPluginReport>>,
     // verification plugins
     plugins: Vec<AnyPlugin<IbPluginReport>>,
 }
@@ -258,7 +258,7 @@ where
                                 graph.add_edge(
                                     *node_map.get(src_guid).unwrap(),
                                     *node_map.get(&dst_guid).unwrap(),
-                                    *link,
+                                    link.clone(),
                                 );
                             }
                         }
@@ -275,7 +275,7 @@ where
         for plugin in &self.plugins {
             let name = plugin.get_name();
             self.graphs.par_iter_mut().for_each(|(_, graph)| {
-                if !graph.report_cache.contains_key(name) {
+                if !graph.report_cache.contains_key(&name) {
                     plugin.execute(graph);
                 }
             });
@@ -293,7 +293,7 @@ where
         for plugin in &self.plugins {
             let name = plugin.get_name();
             self.graphs.par_iter_mut().for_each(|(_, graph)| {
-                if !graph.report_cache.contains_key(name) {
+                if !graph.report_cache.contains_key(&name) {
                     plugin.execute(graph);
                 }
             });
@@ -307,7 +307,7 @@ where
     ME: MatchEncoder<'p>,
 {
     type ID = Guid;
-    type Edge = LinkSpec;
+    type Edge = Arc<LinkSpec>;
 
     fn list_alert(&self) -> Vec<IbPluginReport> {
         let mut alerts = vec![];
@@ -328,7 +328,7 @@ where
 
         let mut links = vec![];
         for e in g.edge_references() {
-            links.push(*e.weight());
+            links.push(e.weight().clone());
         }
         Some(links)
     }
@@ -336,7 +336,7 @@ where
     fn query_dag_from(&self, lid: Lid, src: Guid) -> Option<Vec<Self::Edge>> {
         // HARDCODE: passed `src` is a CA node, we need to find the access switch.
         let ca = self.dp.ca_specs.get(&src)?;
-        let src = ca.common.ports.get(&1)?.1?.dst_node_guid;
+        let src = ca.common.ports.get(&1)?.1.as_ref()?.dst_node_guid;
 
         let p = self.dp.encode_lid(lid);
         let acts = self.query_cache.get(&p)?;
@@ -347,7 +347,7 @@ where
         let mut bfs = Bfs::new(&cg.graph, *src_idx);
         while let Some(nx) = bfs.next(&cg.graph) {
             for e in cg.graph.edges(nx) {
-                links.push(*e.weight());
+                links.push(e.weight().clone());
             }
         }
         Some(links)

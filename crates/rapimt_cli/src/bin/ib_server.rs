@@ -9,6 +9,7 @@ use rapimt_cli::ib::{
 };
 
 use rapimt_core::r#match::engine::OxiddPredicateEngine;
+use tower_http::cors::CorsLayer;
 
 static ENGINE: LazyLock<Arc<OxiddPredicateEngine>> =
     LazyLock::new(|| Arc::new(OxiddPredicateEngine::init(10000, 5000)));
@@ -29,6 +30,7 @@ async fn main() {
         // GET /api/v1/dag/10593?source=11567708961049485322
         // lid: integer, source: guid as integer
         .route("/api/v1/dag/{lid}", get(get_dag_from_handler))
+        .layer(CorsLayer::permissive())
         .with_state(verifier);
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
