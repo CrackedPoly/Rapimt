@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     ib::loader::{Guid, Lid},
-    prelude::{GroupIdx, GroupSpec, LftEntry, LinkSpec, NodeCommon, NodeType, PortIdx, PortSpec},
+    prelude::{
+        get_cache, get_mut_cache, GroupIdx, GroupSpec, LftEntry, LinkSpec, NodeCommon, NodeType,
+        PortIdx, PortSpec,
+    },
 };
 use csv::ReaderBuilder;
 use funty::Unsigned;
@@ -311,14 +314,21 @@ pub fn load_groups(
     while rdr.read_record(&mut raw_record)? {
         let mut spec = GroupSpec::default();
         let gr: GroupRecord = raw_record.deserialize(Some(&headers))?;
-        let mut new_ports: Vec<PortIdx> = vec![];
-        for port in gr.Ports.split(',') {
-            if let Ok(p) = port.parse() {
-                new_ports.push(p)
+        spec.group_idx = gr.Group;
+        if let Some(ports) = get_cache().get(gr.Ports) {
+            spec.ports = ports.clone();
+        } else {
+            let mut new_ports: Vec<PortIdx> = vec![];
+            for port in gr.Ports.split(',') {
+                if let Ok(p) = port.parse() {
+                    new_ports.push(p)
+                }
             }
+            let new_ports = Arc::new(new_ports);
+            get_mut_cache().insert(gr.Ports.to_string(), new_ports.clone());
+            spec.ports = new_ports;
         }
-        spec.ports = new_ports;
-        groups.insert(gr.Group, spec);
+        groups.insert(spec.group_idx, spec);
     }
 
     Ok((guid, groups))

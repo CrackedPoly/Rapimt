@@ -1,4 +1,8 @@
-use std::{borrow::Borrow, fmt::Debug, sync::Arc};
+use std::{
+    borrow::Borrow,
+    fmt::Debug,
+    sync::{Arc, OnceLock},
+};
 
 use derivative::Derivative;
 use funty::Unsigned;
@@ -8,21 +12,21 @@ use rapimt_core::action::{ib::IbActionType, Action, ActionEncoder, Single, Uncod
 use serde::Serialize;
 
 ///// Cache for sharing ports vector.
-//pub static mut CACHE: OnceLock<FxHashMap<String, Vec<PortIdx>>> = OnceLock::new();
-///// WARN: thread-unsafe.
-//pub fn get_cache() -> &'static FxHashMap<String, Vec<PortIdx>> {
-//    #[allow(static_mut_refs)]
-//    unsafe {
-//        CACHE.get_or_init(FxHashMap::default)
-//    }
-//}
-///// WARN: thread-unsafe.
-//pub fn get_mut_cache() -> &'static mut FxHashMap<String, Vec<PortIdx>> {
-//    #[allow(static_mut_refs)]
-//    unsafe {
-//        CACHE.get_mut_or_init(FxHashMap::default)
-//    }
-//}
+pub static mut CACHE: OnceLock<FxHashMap<String, Arc<Vec<PortIdx>>>> = OnceLock::new();
+/// WARN: thread-unsafe.
+pub fn get_cache() -> &'static FxHashMap<String, Arc<Vec<PortIdx>>> {
+    #[allow(static_mut_refs)]
+    unsafe {
+        CACHE.get_or_init(FxHashMap::default)
+    }
+}
+/// WARN: thread-unsafe.
+pub fn get_mut_cache() -> &'static mut FxHashMap<String, Arc<Vec<PortIdx>>> {
+    #[allow(static_mut_refs)]
+    unsafe {
+        CACHE.get_mut_or_init(FxHashMap::default)
+    }
+}
 
 pub type Guid = u64;
 pub type Lid = u16;
@@ -153,7 +157,7 @@ impl LinkSpec {
 #[derive(Default, Debug, Clone)]
 pub struct GroupSpec {
     pub group_idx: GroupIdx,
-    pub ports: Vec<PortIdx>,
+    pub ports: Arc<Vec<PortIdx>>,
 }
 
 /// IB fib rule.

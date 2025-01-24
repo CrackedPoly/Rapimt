@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{error::Error, path::Path};
 
 use crate::ib::loader::*;
@@ -63,11 +64,18 @@ fn parse_group_entry(pair: Pair<'_, Rule>) -> GroupSpec {
                 group.group_idx = parse_dec_ident(p);
             }
             Rule::ports => {
-                let mut new_ports: Vec<PortIdx> = vec![];
-                for p1 in p.into_inner() {
-                    new_ports.push(parse_dec_ident(p1));
+                if let Some(ports) = get_cache().get(p.as_str()) {
+                    group.ports = ports.clone();
+                } else {
+                    let mut new_ports: Vec<PortIdx> = vec![];
+                    let key = p.as_str().to_string();
+                    for p1 in p.into_inner() {
+                        new_ports.push(parse_dec_ident(p1));
+                    }
+                    let new_ports = Arc::new(new_ports);
+                    get_mut_cache().insert(key, new_ports.clone());
+                    group.ports = new_ports;
                 }
-                group.ports = new_ports;
             }
             _ => {}
         }
