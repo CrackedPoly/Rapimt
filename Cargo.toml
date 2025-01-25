@@ -9,6 +9,9 @@ edition = "2021"
 # opt-level = 3
 overflow-checks = false
 
+[profile.release]
+overflow-checks = false
+
 [workspace]
 members = ["crates/*"]
 
