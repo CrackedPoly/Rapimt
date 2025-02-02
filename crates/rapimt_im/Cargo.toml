@@ -8,9 +8,5 @@ edition = "2021"
 [dependencies]
 fxhash = { workspace = true }
 rapimt_core = { path = "../rapimt_core" }
-rapimt_io = { path = "../rapimt_io" }
 rapimt_tpt = { path = "../rapimt_tpt" }
 
-[[example]]
-name = "stanford"
-path = "examples/stanford/stanford.rs"

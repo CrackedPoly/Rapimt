@@ -4,3 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rapimt_core = { path = "../rapimt_core", features = ["lid"] }
+rapimt_io = { path = "../rapimt_io" }
+rapimt_ver = { path = "../rapimt_ver" }
+serde = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8.1", features = ["macros"] }
+tower-http = { version = "0.6.2", features = ["cors", "trace"] }
+
+[[bin]]
+name = "ib_oneshot_check"
+path = "src/bin/ib_oneshot_check.rs"
+
+[[bin]]
+name = "ib_server"
+path = "src/bin/ib_server.rs"

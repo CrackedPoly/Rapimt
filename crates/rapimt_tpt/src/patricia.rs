@@ -24,6 +24,7 @@ pub trait Value: Ord + Eq + Hash + Clone {}
 
 impl<V: Ord + Eq + Hash + Clone> Value for V {}
 
+/// For storing values in the TPT.
 pub trait SetHandle<V: Value>: Default + Clone + Extend<V> + IntoIterator<Item = V> {
     fn is_empty(&self) -> bool;
 
@@ -237,6 +238,7 @@ where
     }
 }
 
+/// Ternary Patricia Tree.
 pub struct TernaryPatriciaTree<V: Value, H: SetHandle<V>> {
     root: Option<TreeNodePtr<V, H>>,
     max_depth: usize,

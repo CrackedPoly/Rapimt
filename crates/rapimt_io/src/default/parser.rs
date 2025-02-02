@@ -104,7 +104,7 @@ pub mod basic {
         ))(input)?;
         Ok((
             rest,
-            (o1 as u32) << 24 | (o2 as u32) << 16 | (o3 as u32) << 8 | o4 as u32,
+            ((o1 as u32) << 24) | ((o2 as u32) << 16) | ((o3 as u32) << 8) | o4 as u32,
         ))
     }
 

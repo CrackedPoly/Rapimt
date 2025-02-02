@@ -21,14 +21,17 @@ use nom::{
     IResult,
 };
 
-use rapimt_core::{
-    action::{Action, ActionEncoder, fwd::FwdActionType, Single, UncodedAction},
-    r#match::{raw_match::{FieldMatch, Match}, engine::PredicateEngine, rule::Rule},
+use rapimt_core::prelude::{
+    Action, ActionEncoder, FieldMatch, FwdActionType, Match, PredicateEngine, Single, UncodedAction,
 };
+use rapimt_im::prelude::Rule;
 
 use crate::{
-    default::parser::basic::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num},
-    default::{FibLoader, InstanceLoader},
+    default::{
+        parser::basic::{parse_digits, parse_ident, parse_ipv4_dotted, parse_ipv4_num},
+        FibLoader, InstanceLoader,
+    },
+    error::*,
 };
 
 /// [NeighborInfo] keeps the mapping of the physical port to the neighbor device.
@@ -104,6 +107,7 @@ impl Debug for TypedActionInner<'_> {
     }
 }
 
+/// Typed, unencoded forwarding action.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TypedAction<'a> {
     Typed(TypedActionInner<'a>),
@@ -125,7 +129,7 @@ impl Hash for TypedActionInner<'_> {
     }
 }
 
-impl<'a> Action<Single> for TypedAction<'a> {
+impl Action<Single> for TypedAction<'_> {
     type S = Self;
 
     fn default_action() -> Self {
@@ -145,7 +149,7 @@ impl<'a> Action<Single> for TypedAction<'a> {
 
     fn overwrite_(&mut self, rhs: &Self) {
         match rhs {
-            TypedAction::NonOverwrite => {},
+            TypedAction::NonOverwrite => {}
             _ => *self = *rhs,
         }
     }
@@ -155,7 +159,11 @@ impl<'a> Action<Single> for TypedAction<'a> {
     }
 }
 
-impl<'a> UncodedAction for TypedAction<'a> {
+impl<'a> UncodedAction<'a> for TypedAction<'a> {
+    type N = &'a Rc<str>;
+    type P = &'a Rc<str>;
+    type Err = Error;
+
     fn get_type(&self) -> impl Into<u8> {
         match self {
             TypedAction::NonOverwrite => FwdActionType::DROP,
@@ -164,23 +172,32 @@ impl<'a> UncodedAction for TypedAction<'a> {
         }
     }
 
-    fn get_next_hops(&self) -> Option<impl IntoIterator<Item = &Rc<str>>> {
+    fn get_ports(&self) -> Result<Box<dyn Iterator<Item = Self::P> + 'a>, Self::Err> {
         match self {
-            TypedAction::NonOverwrite => None,
-            TypedAction::Drop => None,
+            TypedAction::NonOverwrite => Ok(Box::new(std::iter::empty())),
+            TypedAction::Drop => Ok(Box::new(std::iter::empty())),
             TypedAction::Typed(t) => {
                 let ports = NonNull::new(t.origin.ports.as_ptr()).unwrap();
                 let port_info = unsafe { ports.as_ref().get_index(t.idx).unwrap() };
-                Some(port_info.p_ports.iter())
+                Ok(Box::new(port_info.p_ports.iter()))
+            }
+        }
+    }
+
+    fn get_next_hops(&self) -> Result<Box<dyn Iterator<Item = &'a Rc<str>> + 'a>, Self::Err> {
+        match self {
+            TypedAction::NonOverwrite => Ok(Box::new(std::iter::empty())),
+            TypedAction::Drop => Ok(Box::new(std::iter::empty())),
+            TypedAction::Typed(t) => {
+                let ports = NonNull::new(t.origin.ports.as_ptr()).unwrap();
+                let port_info = unsafe { ports.as_ref().get_index(t.idx).unwrap() };
+                Ok(Box::new(port_info.neighbors.iter()))
             }
         }
     }
 }
 
 /// [PortInfoBase] stores the information of a device's ports and neighbors.
-///
-/// Lifetime 'a is used to sync the lifetime of [PortInfo] and [NeighborInfo], bacause [PortInfo]
-/// stores references to data inside [NeighborInfo] to avoid duplication.
 #[derive(Debug)]
 pub struct PortInfoBase {
     #[allow(dead_code)]
@@ -195,40 +212,42 @@ pub struct PortInfoBase {
 impl<'a> ActionEncoder<'a> for PortInfoBase {
     type A = usize;
     type UA = TypedAction<'a>;
+    type K = str;
+    type Err = Error;
 
     #[inline]
-    fn encode(&'a self, action: Self::UA) -> usize {
+    fn encode(&'a self, action: Self::UA) -> Result<Self::A, Self::Err> {
         match action {
-            TypedAction::NonOverwrite => 0,
-            TypedAction::Drop => 1,
-            TypedAction::Typed(t) => t.idx,
+            TypedAction::NonOverwrite => Ok(Self::A::no_overwrite()),
+            TypedAction::Drop => Ok(Self::A::default_action()),
+            TypedAction::Typed(t) => Ok(t.idx),
         }
     }
 
     #[inline]
-    fn decode(&'a self, coded_action: usize) -> Self::UA {
+    fn decode(&'a self, coded_action: usize) -> Result<Self::UA, Self::Err> {
         match coded_action {
-            0 => TypedAction::NonOverwrite,
-            1 => TypedAction::Drop,
-            _ => TypedAction::Typed(TypedActionInner {
+            0 => Ok(TypedAction::NonOverwrite),
+            1 => Ok(TypedAction::Drop),
+            _ => Ok(TypedAction::Typed(TypedActionInner {
                 idx: coded_action,
                 origin: self,
-            }),
+            })),
         }
     }
 
-    fn lookup(&'a self, port_name: &str) -> Option<Self::UA> {
+    fn lookup(&'a self, port_name: impl AsRef<Self::K>) -> Result<Self::UA, Self::Err> {
         // since A == 0 means no overwrite, we can't use 0 as CodedAction
-        match self.ports.borrow().get_full(port_name) {
+        match self.ports.borrow().get_full(port_name.as_ref()) {
             Some((idx, _)) => match idx {
-                0 => Some(TypedAction::NonOverwrite),
-                1 => Some(TypedAction::Drop),
-                _ => Some(TypedAction::Typed(TypedActionInner { idx, origin: self })),
+                0 => Ok(TypedAction::NonOverwrite),
+                1 => Ok(TypedAction::Drop),
+                _ => Ok(TypedAction::Typed(TypedActionInner { idx, origin: self })),
             },
             None => {
                 let mut ports = NonNull::new(self.ports.as_ptr()).unwrap();
                 let mut nbrs = NonNull::new(self.nbrs.as_ptr()).unwrap();
-                let port_name: Rc<str> = Rc::from(port_name);
+                let port_name: Rc<str> = Rc::from(port_name.as_ref());
                 unsafe {
                     nbrs.as_mut().insert(NeighborInfo {
                         p_port: port_name.clone(),
@@ -241,17 +260,26 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
                         p_ports: vec![port_name.clone()],
                         neighbors: vec![port_name],
                     });
-                    Some(TypedAction::Typed(TypedActionInner { idx, origin: self }))
+                    Ok(TypedAction::Typed(TypedActionInner { idx, origin: self }))
                 }
             }
         }
+    }
+
+    fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Result<Self::A, Self::Err> {
+        Ok(self
+            .ports
+            .borrow()
+            .get_full(port_name.as_ref())
+            .map(|(idx, _)| idx)
+            .unwrap())
     }
 }
 
 #[derive(Default)]
 pub struct DefaultInstLoader {}
 
-impl<'a> InstanceLoader<'a, PortInfoBase> for DefaultInstLoader {
+impl InstanceLoader<'_, PortInfoBase> for DefaultInstLoader {
     fn _load<'x, E: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), PortInfoBase, E> {
         let nbrs = UnsafeCell::new(HashSet::with_hasher(FxBuildHasher::default()));
         let ports = UnsafeCell::new(vec![
@@ -371,7 +399,7 @@ fn parse_port_info<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a st
 
 fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
     input: &'a str,
-) -> IResult<&'a str, (&str, NeighborInfo), E> {
+) -> IResult<&'a str, (&'a str, NeighborInfo), E> {
     let (rest, _) = pair(tag("neighbor"), multispace1)(input)?;
     let (rest, (port, nbr)) = separated_pair(parse_port, multispace1, parse_ident)(rest)?;
     Ok((
@@ -437,7 +465,7 @@ fn parse_ipv4_rule<'x, 'a, 'p, PE, AE, E>(
 ) -> impl Fn(&'x str) -> IResult<&'x str, Rule<PE::P, AE::A>, E> + 'p + 'a
 where
     PE: PredicateEngine<'p>,
-    AE: ActionEncoder<'a>,
+    AE: ActionEncoder<'a, K = str>,
     E: ParseError<&'x str>,
     'a: 'p,
     'p: 'a,
@@ -461,7 +489,9 @@ where
             cond: Match::TernaryMatch { value, mask },
         };
         let (pred, mvs) = engine.encode_match(fm);
-        let action = action_encoder.encode(action_encoder.lookup(port_name).unwrap());
+        let action = action_encoder
+            .encode(action_encoder.lookup(port_name).unwrap())
+            .unwrap();
         Ok((
             rest,
             Rule {
@@ -480,7 +510,7 @@ fn parse_ipv4_rule_uncoded<'x, 'a: 'p, 'p: 'a, PE, AE, E>(
 ) -> impl Fn(&'x str) -> IResult<&'x str, Rule<PE::P, AE::UA>, E> + 'p + 'a
 where
     PE: PredicateEngine<'p>,
-    AE: ActionEncoder<'a>,
+    AE: ActionEncoder<'a, K = str>,
     E: ParseError<&'x str>,
 {
     move |input| {
@@ -517,7 +547,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use fxhash::FxHashMap;
     use rapimt_core::r#match::engine::RuddyPredicateEngine;
+    use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore};
 
     use super::*;
 
@@ -593,9 +625,9 @@ mod tests {
         assert_eq!(dev, "dev0");
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].priority, 24);
-        assert_eq!(base.encode(rules[0].action), 4);
+        assert_eq!(base.encode(rules[0].action).unwrap(), 4);
         assert_eq!(rules[1].priority, 0);
-        assert_eq!(base.encode(rules[1].action), 2);
+        assert_eq!(base.encode(rules[1].action).unwrap(), 2);
     }
 
     #[test]
@@ -609,44 +641,116 @@ mod tests {
         port gi1 flood ge0 ge1
         "#;
         let base = loader.load(content).unwrap();
-        let a0 = base.encode(TypedAction::NonOverwrite);
-        let a1 = base.encode(TypedAction::Drop);
-        let a2 = base.encode(TypedAction::Typed(TypedActionInner {
-            idx: 2,
-            origin: &base,
-        }));
-        let a3 = base.encode(TypedAction::Typed(TypedActionInner {
-            idx: 3,
-            origin: &base,
-        }));
-        let a4 = base.encode(TypedAction::Typed(TypedActionInner {
-            idx: 4,
-            origin: &base,
-        }));
-        let a5 = base.encode(TypedAction::Typed(TypedActionInner {
-            idx: 5,
-            origin: &base,
-        }));
+        let a0 = base.encode(TypedAction::NonOverwrite).unwrap();
+        let a1 = base.encode(TypedAction::Drop).unwrap();
+        let a2 = base
+            .encode(TypedAction::Typed(TypedActionInner {
+                idx: 2,
+                origin: &base,
+            }))
+            .unwrap();
+        let a3 = base
+            .encode(TypedAction::Typed(TypedActionInner {
+                idx: 3,
+                origin: &base,
+            }))
+            .unwrap();
+        let a4 = base
+            .encode(TypedAction::Typed(TypedActionInner {
+                idx: 4,
+                origin: &base,
+            }))
+            .unwrap();
+        let a5 = base
+            .encode(TypedAction::Typed(TypedActionInner {
+                idx: 5,
+                origin: &base,
+            }))
+            .unwrap();
         assert_eq!(a0, 0);
         assert_eq!(a1, 1);
         assert_eq!(a2, 2);
         assert_eq!(a3, 3);
         assert_eq!(a4, 4);
         assert_eq!(a5, 5);
-        assert_eq!(base.decode(a0).get_type().into(), FwdActionType::DROP.into());
-        assert_eq!(base.decode(a1).get_type().into(), FwdActionType::DROP.into());
-        assert_eq!(base.decode(a2).get_type().into(), FwdActionType::FORWARD.into());
-        assert_eq!(base.decode(a3).get_type().into(), FwdActionType::FORWARD.into());
-        assert_eq!(base.decode(a4).get_type().into(), FwdActionType::ECMP.into());
-        assert_eq!(base.decode(a5).get_type().into(), FwdActionType::FLOOD.into());
+        assert_eq!(
+            base.decode(a0).unwrap().get_type().into(),
+            FwdActionType::DROP.into()
+        );
+        assert_eq!(
+            base.decode(a1).unwrap().get_type().into(),
+            FwdActionType::DROP.into()
+        );
+        assert_eq!(
+            base.decode(a2).unwrap().get_type().into(),
+            FwdActionType::FORWARD.into()
+        );
+        assert_eq!(
+            base.decode(a3).unwrap().get_type().into(),
+            FwdActionType::FORWARD.into()
+        );
+        assert_eq!(
+            base.decode(a4).unwrap().get_type().into(),
+            FwdActionType::ECMP.into()
+        );
+        assert_eq!(
+            base.decode(a5).unwrap().get_type().into(),
+            FwdActionType::FLOOD.into()
+        );
         assert_eq!(
             base.decode(a4)
+                .unwrap()
                 .get_next_hops()
                 .unwrap()
-                .into_iter()
                 .collect::<Vec<_>>()
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn test_default_fib_monitor() {
+        let spec = r#"
+        name dev0
+        neighbor ge0 dev1
+        neighbor ge1 dev2
+        port gi0 ecmp ge0 ge1
+        port gi1 flood ge0 ge1
+        "#;
+        let fib = r#"
+        name dev0
+        fw 0.0.0.0 1 1 ge0
+        fw 192.168.1.0 24 24 gi0
+        "#;
+        // load port information
+        let loader = DefaultInstLoader::default();
+        let codex = InstanceLoader::load(&loader, spec).unwrap();
+
+        // load fibs
+        let engine = RuddyPredicateEngine::init(100, 100);
+
+        // load fib rules and encode action to usize with codex
+        let (_, fibs) = FibLoader::<usize>::load(&codex, &engine, fib).unwrap();
+
+        // setup fib monitor
+        let mut fib_monitor = FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine);
+
+        // two rules as an incremental update
+        // im should have three entries: one default "drop", one 0.0.0.0/1 and one "192.168.1.0/24"
+        let im: InverseModel<_, _, _, FxHashMap<usize, _>> = fib_monitor.insert(fibs.clone());
+        assert_eq!(im.len(), 3);
+
+        RuleMonitorLike::<_, usize, _, _, _, _>::clear(&mut fib_monitor);
+        let im: InverseModel<_, _, _, FxHashMap<usize, _>> = fib_monitor.insert(fibs);
+        assert_eq!(im.len(), 3);
+
+        let im = InverseModel::<_, _, _, FxHashMap<Vec<usize>, _>>::from(im);
+        assert_eq!(im.len(), 3);
+
+        // load fib rules and encode action to TypedAction with codex, run the same as above
+        let (_, fibs) = FibLoader::<TypedAction>::load(&codex, &engine, fib).unwrap();
+        let mut fib_monitor = FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine);
+        let im: InverseModel<_, _, _, FxHashMap<TypedAction, _>> = fib_monitor.insert(fibs);
+        assert_eq!(im.len(), 3);
     }
 }

@@ -223,7 +223,7 @@ impl Segment {
     }
 }
 
-// Segmentized is a scanner that can scan V (which can represent an array of ternary digits).
+// A bit scanner of a type.
 pub trait Segmentized<V>: Sized {
     // get the length of the original segment
     fn len(&self) -> usize;
@@ -267,6 +267,7 @@ pub trait Segmentized<V>: Sized {
     fn assert_next(&self, assert_value: bool, assert_mask: bool) -> Option<Self>;
 }
 
+/// Segmentizer of the masked values of a match.
 pub struct Segmentizer {
     orig: Segment,
     pos: usize,

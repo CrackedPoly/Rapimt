@@ -1,0 +1,39 @@
+// ----- Common Definitions -----
+comment    = @{ "#" ~ (!"\n" ~ ASCII)* }
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+
+parenthesed0 = { (!("(" | ")") ~ ANY)+ }
+parenthesed  = { "(" ~ (parenthesed0 | parenthesed)+ ~ ")" }
+bracketed0   = { (!("[" | "]") ~ ANY)+ }
+bracketed    = { "[" ~ (bracketed0 | bracketed)+ ~ "]" }
+quote0       = { (!"\"" ~ ANY)+ }
+quoted       = { "\"" ~ quote0 ~ "\"" }
+colon0       = { (!(":" | "\n") ~ ANY)+ }
+
+hex_bare_ident  = ${ ASCII_HEX_DIGIT+ }
+hex_ident       = ${ "0x" ~ hex_bare_ident }
+digit_ident     = ${ ASCII_DIGIT+ }
+node_name_ident = ${ ("S" | "H") ~ "-" ~ ASCII_HEX_DIGIT+ }
+// ----- Common Definitions -----
+
+// ----- FAR File -----
+file_ver    = { "File version:" ~ digit_ident }
+switch_stat = { "Switch" ~ hex_ident ~ (!"Groups Definition:" ~ ANY)+ }
+fwd_state   = { switch_stat ~ group_def ~ lft_def }
+
+group_def     = { "Groups Definition:" ~ "Group" ~ "Sub Group" ~ "WHBF" ~ "Ports" ~ ("-")+ ~ group_entry+ }
+group_idx     = { digit_ident }
+sub_group_idx = { digit_ident }
+whbf          = { digit_ident }
+ports         = { (digit_ident ~ ",")* }
+group_entry   = { group_idx ~ sub_group_idx ~ whbf ~ ports }
+
+lft_def     = { "LFT Definition:" ~ "PLFT_NUM:" ~ digit_ident ~ ", top:" ~ hex_ident ~ "LID" ~ "Static Port" ~ "Lid State" ~ "Group" ~ ("-")+ ~ lft_entry+ }
+lid         = { hex_ident }
+static_port = { digit_ident }
+lid_state   = { ("Static" | "HBF" | "Free") }
+group       = { digit_ident }
+lft_entry   = { lid ~ static_port ~ lid_state ~ group }
+
+far_file = { SOI ~ comment* ~ file_ver ~ fwd_state+ ~ comment* ~ EOI }
+// ----- FAR File -----

@@ -9,24 +9,24 @@ edition = "2021"
 bitvec = { workspace = true }
 RuDDy = { workspace = true }
 num_enum = { workspace = true }
-oxidd = { version = "0.9.0", features = ["bdd", "manager-pointer", "multi-threading"] }
+serde = { workspace = true }
+funty = { workspace = true }
+oxidd = { version = "0.9.0", features = [
+  "bdd",
+  "manager-pointer",
+  "multi-threading",
+] }
 phf = { version = "0.11", default-features = false }
-funty = "2.0.0"
 
 [build-dependencies]
 phf = { version = "0.11", default-features = false }
 phf_codegen = "0.11.1"
 
 [features]
-default = ["dip", "sip", "sport", "dport", "tag"]
+default = ["dip", "sip", "sport", "dport", "tag", "lid"]
 dip = []
 sip = []
 dport = []
 sport = []
 tag = []
-
-[profile.dev]
-overflow-checks = false
-
-[profile.release]
-overflow-checks = false
+lid = []

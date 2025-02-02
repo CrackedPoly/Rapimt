@@ -1,16 +1,15 @@
+//! IO for default format.
 use nom::{
     error::{Error, ParseError},
     {Finish, IResult},
 };
-use rapimt_core::prelude::{Action, ActionEncoder, PredicateEngine, Rule, Single};
+use rapimt_core::prelude::{Action, ActionEncoder, PredicateEngine, Single};
+use rapimt_im::prelude::Rule;
 
-pub mod parser;
 pub mod loader;
+pub mod parser;
 
-/// InstanceLoader is a parser that can parse the topology file load an instance (ActionEncoder)
-/// according to some format.
-///
-/// ***The trait and the format are manufacture-specific.***
+/// Load instances from default format.
 pub trait InstanceLoader<'a, AE: ActionEncoder<'a>> {
     // Required method
     fn _load<'x, Err: ParseError<&'x str>>(&self, content: &'x str) -> IResult<(), AE, Err>;
@@ -25,10 +24,7 @@ pub trait InstanceLoader<'a, AE: ActionEncoder<'a>> {
     }
 }
 
-/// [FibLoader] should be implemented by an [ActionEncoder], it enable action encoder to parse fib
-/// rules in string format and encode them into into [Rule]s in the system.
-///
-/// ***The trait and the format are manufacture-specific.***
+/// Load fibs from default format.
 #[allow(clippy::type_complexity)]
 pub trait FibLoader<'a, A>: ActionEncoder<'a>
 where
@@ -67,4 +63,3 @@ where
         }
     }
 }
-
