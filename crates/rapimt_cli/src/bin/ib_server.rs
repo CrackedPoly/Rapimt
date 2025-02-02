@@ -9,15 +9,16 @@ use rapimt_cli::ib::{
 };
 
 use rapimt_core::r#match::engine::OxiddPredicateEngine;
-use tower_http::cors::CorsLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 static ENGINE: LazyLock<Arc<OxiddPredicateEngine>> =
     LazyLock::new(|| Arc::new(OxiddPredicateEngine::init(10000, 5000)));
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let cli = Cli::parse();
-    println!("{:?}", cli);
+    log::info!("args: {:?}", cli);
     let verifier = build_verifier(cli, ENGINE.as_ref());
 
     // build our application with a single route
@@ -31,9 +32,10 @@ async fn main() {
         // lid: integer, source: guid as integer
         .route("/api/v1/dag/{lid}", get(get_dag_from_handler))
         .layer(CorsLayer::permissive())
+        .layer(TraceLayer::new_for_http())
         .with_state(verifier);
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("Listening on {}", listener.local_addr().unwrap());
+    log::info!("Listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, routes).await.unwrap();
 }

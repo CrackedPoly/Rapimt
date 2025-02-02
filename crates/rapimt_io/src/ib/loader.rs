@@ -1,15 +1,34 @@
 use std::{
     borrow::Borrow,
-    fmt::Debug,
     sync::{Arc, OnceLock},
 };
 
 use derivative::Derivative;
 use funty::Unsigned;
-use fxhash::FxHashMap;
+use fxhash::{FxBuildHasher, FxHashMap};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use rapimt_core::action::{ib::IbActionType, Action, ActionEncoder, Single, UncodedAction};
+use rapimt_core::{
+    action::{ib::IbActionType, Action, ActionEncoder, Multiple, Single, UncodedAction},
+    r#match::{
+        engine::MatchEncoder,
+        predicate::Predicate,
+        raw_match::{FieldMatch, Match},
+    },
+};
+use rapimt_im::{
+    ib::{monitor::IbRuleMonitor, rule::Rule},
+    im::InverseModel,
+    RawRuleLike, RuleMonitorLike,
+};
 use serde::Serialize;
+use snafu::{OptionExt, ResultExt};
+
+use crate::{
+    error::*,
+    prelude::csv_parser::{load_groups, load_nodes},
+};
+
+use super::{DataPlane, IbDataPlaneConfig};
 
 ///// Cache for sharing ports vector.
 pub static mut CACHE: OnceLock<FxHashMap<String, Arc<[PortIdx]>>> = OnceLock::new();
@@ -64,7 +83,7 @@ pub struct NodeCommon {
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
     #[serde(skip_serializing)]
-    pub ports: FxHashMap<PortIdx, (PortSpec, Option<Arc<LinkSpec>>)>,
+    pub ports: FxHashMap<PortIdx, PortSpec>,
 }
 
 /// IB switch spec.
@@ -116,12 +135,13 @@ impl<T: Borrow<str>> From<T> for SpeedUnit {
 }
 
 /// Port spec.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone)]
 pub struct PortSpec {
     // TODO: add more fields
     pub port_guid: Guid,
     pub port_num: PortIdx,
     pub lid: Lid,
+    pub link: Option<Arc<LinkSpec>>,
 }
 
 /// Link spec between two ports.
@@ -131,15 +151,6 @@ pub struct LinkSpec {
     pub dst_port_idx: PortIdx,
     pub src_node_guid: Guid,
     pub dst_node_guid: Guid,
-}
-
-/// Single Linear Forwarding Table entry. (FIB entry)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct LftEntry {
-    pub lid: Lid,
-    pub port: PortIdx,
-    pub group: GroupIdx,
-    pub lid_state: IbActionType,
 }
 
 impl LinkSpec {
@@ -152,6 +163,17 @@ impl LinkSpec {
         }
     }
 }
+
+/// Single Linear Forwarding Table entry. (FIB entry)
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct LftEntry {
+    pub lid: Lid,
+    pub port: PortIdx,
+    pub group: GroupIdx,
+    pub lid_state: IbActionType,
+}
+
+impl RawRuleLike for LftEntry {}
 
 /// Group spec in routing table.
 #[derive(Default, Debug, Clone)]
@@ -233,6 +255,7 @@ impl<'a> Action<Single> for IbAction<'a> {
 impl<'a> UncodedAction<'a> for IbAction<'a> {
     type N = Guid;
     type P = PortIdx;
+    type Err = Error;
 
     fn get_type(&self) -> impl Into<u8> {
         match self {
@@ -244,16 +267,26 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
         }
     }
 
-    fn get_next_hops(&self) -> Option<Box<dyn Iterator<Item = Guid> + 'a>> {
+    fn get_next_hops(&self) -> Result<Box<dyn Iterator<Item = Guid> + 'a>, Self::Err> {
         match self {
-            IbAction::Drop => None,
-            IbAction::NonOverwrite => None,
+            IbAction::Drop => Ok(Box::new(std::iter::empty())),
+            IbAction::NonOverwrite => Ok(Box::new(std::iter::empty())),
             IbAction::Static(IbActionRef {
                 action: port_idx,
                 owner,
             }) => {
-                let link = owner.common.ports.get(port_idx as &PortIdx)?.1.as_ref()?;
-                Some(Box::new(std::iter::once(link.dst_node_guid)))
+                let link = owner
+                    .common
+                    .ports
+                    .get(port_idx as &PortIdx)
+                    .context(IbPortNotFoundSnafu {
+                        node: owner.common.node_guid,
+                        port: *port_idx,
+                    })?
+                    .link
+                    .as_ref()
+                    .unwrap();
+                Ok(Box::new(std::iter::once(link.dst_node_guid)))
             }
             IbAction::AR(IbActionRef {
                 action: group_idx,
@@ -263,13 +296,20 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
                 action: group_idx,
                 owner,
             }) => {
-                let group = owner.groups.get(group_idx as &GroupIdx)?;
-                Some(Box::new(group.ports.iter().filter_map(|port| {
+                let group =
+                    owner
+                        .groups
+                        .get(group_idx as &GroupIdx)
+                        .context(IbGroupNotFoundSnafu {
+                            node: owner.common.node_guid,
+                            group: *group_idx,
+                        })?;
+                Ok(Box::new(group.ports.iter().filter_map(|port| {
                     owner
                         .common
                         .ports
                         .get(port)?
-                        .1
+                        .link
                         .as_ref()
                         .map(|link| link.dst_node_guid)
                 })))
@@ -277,18 +317,39 @@ impl<'a> UncodedAction<'a> for IbAction<'a> {
         }
     }
 
-    fn get_ports(&self) -> Option<Box<dyn Iterator<Item = Self::P> + 'a>> {
+    fn get_ports(&self) -> Result<Box<dyn Iterator<Item = Self::P> + 'a>, Self::Err> {
         match self {
-            IbAction::Drop => None,
-            IbAction::NonOverwrite => None,
+            IbAction::Drop => Ok(Box::new(std::iter::empty())),
+            IbAction::NonOverwrite => Ok(Box::new(std::iter::empty())),
             IbAction::Static(IbActionRef { action, owner }) => {
-                let link = owner.common.ports.get(action as &PortIdx)?.1.as_ref()?;
-                Some(Box::new(std::iter::once(link.src_port_idx)))
+                let link = owner
+                    .common
+                    .ports
+                    .get(action as &PortIdx)
+                    .context(IbPortNotFoundSnafu {
+                        node: owner.common.node_guid,
+                        port: *action,
+                    })?
+                    .link
+                    .as_ref();
+                // it is possible and normal that a port does not have any link
+                if let Some(link) = link {
+                    Ok(Box::new(std::iter::once(link.src_port_idx)))
+                } else {
+                    Ok(Box::new(std::iter::empty()))
+                }
             }
             IbAction::AR(IbActionRef { action, owner })
             | IbAction::HBF(IbActionRef { action, owner }) => {
-                let group = owner.groups.get(action as &GroupIdx)?;
-                Some(Box::new(group.ports.iter().copied()))
+                let group =
+                    owner
+                        .groups
+                        .get(action as &GroupIdx)
+                        .context(IbGroupNotFoundSnafu {
+                            node: owner.common.node_guid,
+                            group: *action,
+                        })?;
+                Ok(Box::new(group.ports.iter().copied()))
             }
         }
     }
@@ -298,48 +359,50 @@ impl<'a> ActionEncoder<'a> for &'a SwitchSpec {
     type A = FusedIdx;
     type UA = IbAction<'a>;
     type K = RawAction;
+    type Err = Error;
 
-    fn encode(&'a self, action: Self::UA) -> Self::A {
+    fn encode(&'a self, action: Self::UA) -> Result<Self::A, Self::Err> {
         match action {
-            IbAction::NonOverwrite => 0,
-            IbAction::Drop => 1,
+            IbAction::NonOverwrite => Ok(0),
+            IbAction::Drop => Ok(1),
             IbAction::Static(IbActionRef { action, owner: _ }) => {
-                (action as FusedIdx) | ((IbActionType::Static as FusedIdx) << NON_TYPED_WIDTH)
+                Ok((action as FusedIdx) | ((IbActionType::Static as FusedIdx) << NON_TYPED_WIDTH))
             }
-            IbAction::AR(IbActionRef { action, owner: _ }) => {
-                (action as FusedIdx)
-                    | ((IbActionType::AdaptiveRouting as FusedIdx) << NON_TYPED_WIDTH)
-            }
-            IbAction::HBF(IbActionRef { action, owner: _ }) => {
-                (action as FusedIdx)
-                    | ((IbActionType::HashBasedForwarding as FusedIdx) << NON_TYPED_WIDTH)
-            }
+            IbAction::AR(IbActionRef { action, owner: _ }) => Ok((action as FusedIdx)
+                | ((IbActionType::AdaptiveRouting as FusedIdx) << NON_TYPED_WIDTH)),
+            IbAction::HBF(IbActionRef { action, owner: _ }) => Ok((action as FusedIdx)
+                | ((IbActionType::HashBasedForwarding as FusedIdx) << NON_TYPED_WIDTH)),
         }
     }
 
-    fn decode(&'a self, coded_action: Self::A) -> Self::UA {
+    fn decode(&'a self, coded_action: Self::A) -> Result<Self::UA, Self::Err> {
         match coded_action {
-            0 => IbAction::NonOverwrite,
-            1 => IbAction::Drop,
+            0 => Ok(IbAction::NonOverwrite),
+            1 => Ok(IbAction::Drop),
             _ => {
                 let owner = self;
-                match IbActionType::try_from((coded_action >> 12) as u8).unwrap() {
-                    IbActionType::NonOverwrite => IbAction::NonOverwrite,
-                    IbActionType::Drop => IbAction::Drop,
+                let action_type = (coded_action >> NON_TYPED_WIDTH) as u8;
+                match IbActionType::try_from(action_type).map_err(|_| {
+                    Error::IbPortTypeNotFound {
+                        number: (coded_action >> 12) as u8,
+                    }
+                })? {
+                    IbActionType::NonOverwrite => Ok(IbAction::NonOverwrite),
+                    IbActionType::Drop => Ok(IbAction::Drop),
                     IbActionType::Static => {
                         let action = coded_action & TYPE_UNMASK;
-                        IbAction::Static(IbActionRef {
+                        Ok(IbAction::Static(IbActionRef {
                             action: action as u8,
                             owner,
-                        })
+                        }))
                     }
                     IbActionType::AdaptiveRouting => {
                         let action = coded_action & TYPE_UNMASK;
-                        IbAction::AR(IbActionRef { action, owner })
+                        Ok(IbAction::AR(IbActionRef { action, owner }))
                     }
                     IbActionType::HashBasedForwarding => {
                         let action = coded_action & TYPE_UNMASK;
-                        IbAction::HBF(IbActionRef { action, owner })
+                        Ok(IbAction::HBF(IbActionRef { action, owner }))
                     }
                     _ => {
                         unimplemented!("IB action type not considered")
@@ -349,40 +412,242 @@ impl<'a> ActionEncoder<'a> for &'a SwitchSpec {
         }
     }
 
-    fn lookup(&'a self, port_name: impl AsRef<Self::K>) -> Option<Self::UA> {
+    fn lookup(&'a self, port_name: impl AsRef<Self::K>) -> Result<Self::UA, Self::Err> {
         match port_name.as_ref() {
-            RawAction::NonOverwrite => Some(IbAction::NonOverwrite),
-            RawAction::Drop => Some(IbAction::Drop),
-            RawAction::Static(port) => Some(IbAction::Static(IbActionRef {
+            RawAction::NonOverwrite => Ok(IbAction::NonOverwrite),
+            RawAction::Drop => Ok(IbAction::Drop),
+            RawAction::Static(port) => Ok(IbAction::Static(IbActionRef {
                 action: *port,
                 owner: self,
             })),
-            RawAction::AR(group) => Some(IbAction::AR(IbActionRef {
+            RawAction::AR(group) => Ok(IbAction::AR(IbActionRef {
                 action: *group,
                 owner: self,
             })),
-            RawAction::HBF(group) => Some(IbAction::HBF(IbActionRef {
+            RawAction::HBF(group) => Ok(IbAction::HBF(IbActionRef {
                 action: *group,
                 owner: self,
             })),
         }
     }
 
-    fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Option<Self::A> {
+    fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Result<Self::A, Self::Err> {
         match port_name.as_ref() {
-            RawAction::NonOverwrite => Some(0),
-            RawAction::Drop => Some(1),
+            RawAction::NonOverwrite => Ok(0),
+            RawAction::Drop => Ok(1),
             RawAction::Static(port) => {
-                Some((*port as FusedIdx) | ((IbActionType::Static as FusedIdx) << NON_TYPED_WIDTH))
+                Ok((*port as FusedIdx) | ((IbActionType::Static as FusedIdx) << NON_TYPED_WIDTH))
             }
-            RawAction::AR(group) => Some(
-                (*group as FusedIdx)
-                    | ((IbActionType::AdaptiveRouting as FusedIdx) << NON_TYPED_WIDTH),
-            ),
-            RawAction::HBF(group) => Some(
-                (*group as FusedIdx)
-                    | ((IbActionType::HashBasedForwarding as FusedIdx) << NON_TYPED_WIDTH),
-            ),
+            RawAction::AR(group) => Ok((*group as FusedIdx)
+                | ((IbActionType::AdaptiveRouting as FusedIdx) << NON_TYPED_WIDTH)),
+            RawAction::HBF(group) => Ok((*group as FusedIdx)
+                | ((IbActionType::HashBasedForwarding as FusedIdx) << NON_TYPED_WIDTH)),
         }
+    }
+}
+
+pub struct IbDataPlane<'p, ME: MatchEncoder<'p>> {
+    engine: &'p ME,
+    switch_monitors: FxHashMap<Guid, IbRuleMonitor<'p, FusedIdx, ME>>,
+    switch_order: FxHashMap<Guid, usize>,
+    switch_specs: FxHashMap<Guid, SwitchSpec>,
+    ca_specs: FxHashMap<Guid, CaSpec>,
+    nodes: FxHashMap<Guid, Arc<NodeCommon>>,
+}
+
+impl<'p, ME> IbDataPlane<'p, ME>
+where
+    ME: MatchEncoder<'p>,
+{
+    pub fn encode_lid(&self, lid: Lid) -> Predicate<ME::P> {
+        self.engine.encode_match_wo_mv(FieldMatch {
+            field: "lid",
+            cond: Match::ExactMatch { value: lid },
+        })
+    }
+
+    fn encode_rules(
+        &self,
+        switch: &Guid,
+        rules: impl IntoIterator<Item = LftEntry>,
+    ) -> impl IntoIterator<Item = Rule<ME::P, FusedIdx>> {
+        let encoder = self.switch_specs.get(switch).unwrap();
+        let mut encoded_rules = vec![];
+        for r in rules.into_iter() {
+            let raw_action = match r.lid_state {
+                IbActionType::Static => RawAction::Static(r.port),
+                IbActionType::HashBasedForwarding => RawAction::HBF(r.group),
+                IbActionType::AdaptiveRouting => RawAction::AR(r.group),
+                _ => panic!("Unsupported action type"),
+            };
+            encoded_rules.push(Rule {
+                predicate: self.encode_lid(r.lid),
+                action: encoder.encode_raw(&raw_action).unwrap(),
+                lid: r.lid,
+            });
+        }
+        encoded_rules
+    }
+}
+
+impl<'a, 'p, ME> DataPlane<'a, 'p, ME> for IbDataPlane<'p, ME>
+where
+    ME: MatchEncoder<'p>,
+    Self: 'a,
+{
+    type A = FusedIdx;
+
+    type UA = IbAction<'a>;
+
+    type AE = &'a SwitchSpec;
+
+    type OT = Multiple;
+
+    type OA = Arc<Vec<FusedIdx>>;
+
+    type R = Rule<ME::P, FusedIdx>;
+
+    type RR = LftEntry;
+
+    type M = Vec<(Arc<Vec<FusedIdx>>, Predicate<ME::P>)>;
+
+    type Mon = IbRuleMonitor<'p, FusedIdx, ME>;
+
+    type NK = Guid;
+
+    type Topo = Arc<NodeCommon>;
+
+    // Load the snapshot from the given directory.
+    // This method implementation is ugly because the input format is not regular.
+    fn new(config: &IbDataPlaneConfig<'p, ME>) -> Result<Self, Error> {
+        let mut switch_specs = FxHashMap::with_hasher(FxBuildHasher::default());
+        let mut switch_monitors = FxHashMap::with_hasher(FxBuildHasher::default());
+        let mut switch_order = FxHashMap::with_hasher(FxBuildHasher::default());
+        let mut ca_specs = FxHashMap::with_hasher(FxBuildHasher::default());
+        let nodes = load_nodes(&config.topology_dir, config.label_fn)?;
+        for (guid, node) in nodes.iter() {
+            match node.node_type {
+                NodeType::Switch => {
+                    switch_specs.insert(
+                        *guid,
+                        SwitchSpec {
+                            common: node.clone(),
+                            ..Default::default()
+                        },
+                    );
+                    switch_monitors.insert(*guid, IbRuleMonitor::new(config.engine));
+                    switch_order.insert(*guid, switch_order.len());
+                }
+                NodeType::HCA => {
+                    ca_specs.insert(
+                        *guid,
+                        CaSpec {
+                            common: node.clone(),
+                        },
+                    );
+                }
+            }
+        }
+        // parse all groups
+        log::info!(
+            "Loading groups from {}",
+            config.far_dir.join("group").display()
+        );
+        let mut num_dev = 0usize;
+        for file in std::fs::read_dir(config.far_dir.join("group")).context(FileIoSnafu {})? {
+            let (guid, groups) = load_groups(file.context(FileIoSnafu {})?.path())?;
+            let switch_spec = switch_specs
+                .get_mut(&guid)
+                .context(IbNodeNotFoundSnafu { node: guid })?;
+            switch_spec.groups = groups;
+            num_dev += 1;
+        }
+        log::info!("Loaded groups from {} devices", num_dev);
+        let dp = Self {
+            engine: config.engine,
+            switch_monitors,
+            switch_order,
+            switch_specs,
+            ca_specs,
+            nodes,
+        };
+
+        Ok(dp)
+    }
+
+    fn get_monitor(&self, node: &Self::NK) -> Result<&Self::Mon, Error> {
+        self.switch_monitors
+            .get(node)
+            .context(IbNodeNotFoundSnafu { node: *node })
+    }
+
+    fn get_monitor_mut(&mut self, node: &Self::NK) -> Result<&mut Self::Mon, Error> {
+        self.switch_monitors
+            .get_mut(node)
+            .context(IbNodeNotFoundSnafu { node: *node })
+    }
+
+    fn get_encoder(&'a self, node: &Self::NK) -> Result<Self::AE, Error> {
+        self.switch_specs
+            .get(node)
+            .context(IbNodeNotFoundSnafu { node: *node })
+    }
+
+    fn get_encoder_index(&self, node: &Self::NK) -> Result<usize, Error> {
+        self.switch_order
+            .get(node)
+            .copied()
+            .context(IbNodeNotFoundSnafu { node: *node })
+    }
+
+    fn iter_encoder(&'a self) -> impl Iterator<Item = (Self::NK, Self::AE)> {
+        self.switch_specs.iter().map(|(k, v)| (*k, v))
+    }
+
+    fn iter_switch_topology(&self) -> impl Iterator<Item = (Self::NK, Self::Topo)> {
+        self.switch_specs
+            .iter()
+            .map(|(k, v)| (*k, v.common.clone()))
+    }
+
+    fn iter_host_topology(&self) -> impl Iterator<Item = (Self::NK, Self::Topo)> {
+        self.ca_specs.iter().map(|(k, v)| (*k, v.common.clone()))
+    }
+
+    fn get_topology(&self, node: &Self::NK) -> Result<Self::Topo, Error> {
+        self.nodes
+            .get(node)
+            .context(IbNodeNotFoundSnafu { node: *node })
+            .cloned()
+    }
+
+    fn is_node_host(&self, node: &Self::NK) -> Result<bool, Error> {
+        if self.ca_specs.contains_key(node) {
+            Ok(true)
+        } else if self.switch_specs.contains_key(node) {
+            Ok(false)
+        } else {
+            Err(Error::IbNodeNotFound { node: *node })
+        }
+    }
+
+    fn update_rules(
+        &mut self,
+        node: &Self::NK,
+        insertion: impl IntoIterator<Item = Self::RR>,
+        deletion: impl IntoIterator<Item = Self::RR>,
+    ) -> Result<InverseModel<Self::OA, <ME as MatchEncoder<'p>>::P, Self::OT, Self::M>, Error> {
+        let ins = self.encode_rules(node, insertion);
+        let del = self.encode_rules(node, deletion);
+        let monitor = self.switch_monitors.get_mut(node).unwrap();
+        Ok(InverseModel::resize(
+            monitor.update(ins, del),
+            self.switch_order.len(),
+            self.get_encoder_index(node).unwrap(),
+        ))
+    }
+
+    fn get_engine(&self) -> &ME {
+        self.engine
     }
 }

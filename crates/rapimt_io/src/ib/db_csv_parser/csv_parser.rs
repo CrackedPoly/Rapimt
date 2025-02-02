@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    error::*,
     ib::loader::{Guid, Lid},
     prelude::{
         get_cache, get_mut_cache, GroupIdx, GroupSpec, LftEntry, LinkSpec, NodeCommon, NodeType,
@@ -12,6 +13,7 @@ use funty::Unsigned;
 use fxhash::{FxBuildHasher, FxHashMap};
 use rapimt_core::action::ib::IbActionType;
 use serde::{Deserialize, Deserializer};
+use snafu::{OptionExt, ResultExt};
 
 const SWITCH_LID_PORT_IDX: u8 = 0;
 const CA_LID_PORT_IDX: u8 = 1;
@@ -178,14 +180,19 @@ pub struct LftRecord {
 pub fn load_node_commons(
     file: impl AsRef<std::path::Path>,
     label_fn: fn(&str) -> u8,
-) -> Result<Vec<NodeCommon>, Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(file)?;
+) -> Result<Vec<NodeCommon>, Error> {
+    let file = std::fs::File::open(file).context(FileIoSnafu {})?;
     let mut nodes = vec![];
     let mut rdr = csv::Reader::from_reader(file);
     let mut raw_record = csv::ByteRecord::new();
-    let headers = rdr.byte_headers()?.clone();
-    while rdr.read_byte_record(&mut raw_record)? {
-        let nr: NodeRecord = raw_record.deserialize(Some(&headers))?;
+    let headers = rdr.byte_headers().context(ParseCsvSnafu {})?.clone();
+    while rdr
+        .read_byte_record(&mut raw_record)
+        .context(ParseCsvSnafu {})?
+    {
+        let nr: NodeRecord = raw_record
+            .deserialize(Some(&headers))
+            .context(ParseCsvSnafu {})?;
         nodes.push(NodeCommon {
             vendor_id: nr.VendorID,
             device_id: nr.DeviceID,
@@ -194,7 +201,12 @@ pub fn load_node_commons(
             port_guid: nr.PortGUID,
             port_num: nr.NumPorts,
             lid: 0,
-            node_type: nr.NodeType.try_into()?,
+            node_type: nr
+                .NodeType
+                .try_into()
+                .map_err(|_| Error::IbNodeTypeNotFound {
+                    number: nr.NodeType,
+                })?,
             description: nr.NodeDesc.to_string(),
             label: label_fn(nr.NodeDesc),
             ports: FxHashMap::default(),
@@ -203,16 +215,19 @@ pub fn load_node_commons(
     Ok(nodes)
 }
 
-pub fn load_links(
-    file: impl AsRef<std::path::Path>,
-) -> Result<Vec<LinkSpec>, Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(file)?;
+pub fn load_links(file: impl AsRef<std::path::Path>) -> Result<Vec<LinkSpec>, Error> {
+    let file = std::fs::File::open(file).context(FileIoSnafu {})?;
     let mut links = vec![];
     let mut rdr = csv::Reader::from_reader(file);
     let mut raw_record = csv::ByteRecord::new();
-    let headers = rdr.byte_headers()?.clone();
-    while rdr.read_byte_record(&mut raw_record)? {
-        let lr: LinkRecord = raw_record.deserialize(Some(&headers))?;
+    let headers = rdr.byte_headers().context(ParseCsvSnafu {})?.clone();
+    while rdr
+        .read_byte_record(&mut raw_record)
+        .context(ParseCsvSnafu {})?
+    {
+        let lr: LinkRecord = raw_record
+            .deserialize(Some(&headers))
+            .context(ParseCsvSnafu {})?;
         links.push(LinkSpec {
             src_node_guid: lr.NodeGuid1,
             src_port_idx: lr.PortNum1,
@@ -225,23 +240,30 @@ pub fn load_links(
 
 pub fn load_ports(
     file: impl AsRef<std::path::Path>,
-) -> Result<FxHashMap<Guid, Vec<PortSpec>>, Box<dyn std::error::Error>> {
-    let file = std::fs::File::open(file)?;
+) -> Result<FxHashMap<Guid, Vec<PortSpec>>, Error> {
+    let f = std::fs::File::open(&file).context(FileIoSnafu {})?;
     let mut node_ports: FxHashMap<Guid, Vec<PortSpec>> =
         FxHashMap::with_hasher(FxBuildHasher::default());
-    let mut rdr = csv::Reader::from_reader(file);
+    let mut rdr = csv::Reader::from_reader(f);
     let mut raw_record = csv::ByteRecord::new();
-    let headers = rdr.byte_headers()?.clone();
-    while rdr.read_byte_record(&mut raw_record)? {
-        let pr: PortRecord = raw_record.deserialize(Some(&headers)).unwrap();
+    let headers = rdr.byte_headers().context(ParseCsvSnafu {})?.clone();
+    while rdr
+        .read_byte_record(&mut raw_record)
+        .context(ParseCsvSnafu {})?
+    {
+        let pr: PortRecord = raw_record
+            .deserialize(Some(&headers))
+            .context(ParseCsvSnafu {})?;
         let spec = PortSpec {
             port_guid: pr.PortGuid,
             port_num: pr.PortNum,
             lid: pr.LID,
+            // leave it empty for now
+            link: None,
         };
         node_ports
             .entry(pr.NodeGuid)
-            .and_modify(|v| v.push(spec))
+            .and_modify(|v| v.push(spec.clone()))
             .or_insert(vec![spec]);
     }
     Ok(node_ports)
@@ -250,39 +272,47 @@ pub fn load_ports(
 pub fn load_nodes(
     dir: impl AsRef<std::path::Path>,
     label_fn: fn(&str) -> u8,
-) -> Result<FxHashMap<Guid, Arc<NodeCommon>>, Box<dyn std::error::Error>> {
+) -> Result<FxHashMap<Guid, Arc<NodeCommon>>, Error> {
     let node_common_file = dir.as_ref().join("nodes.csv");
+    log::info!("Loading nodes from {}", node_common_file.display());
     let nodes = load_node_commons(node_common_file, label_fn)?;
     let mut nodes: FxHashMap<Guid, Arc<NodeCommon>> = nodes
         .into_iter()
         .map(|node| (node.node_guid, Arc::new(node)))
         .collect();
+    log::info!("Number of nodes: {}", nodes.len());
     // load ports
     let port_file = dir.as_ref().join("ports.csv");
+    log::info!("Loading ports from {}", port_file.display());
     let node_ports = load_ports(port_file)?;
+    let mut sum = 0usize;
     for (guid, ports) in node_ports {
         let node = Arc::get_mut(nodes.get_mut(&guid).unwrap()).unwrap();
         for port in ports {
             // leave link to None for now
-            node.ports.insert(port.port_num, (port, None));
+            node.ports.insert(port.port_num, port);
+            sum += 1;
         }
     }
+    log::info!("Number of ports: {}", sum);
     // load links
     let link_file = dir.as_ref().join("links.csv");
+    log::info!("Loading links from {}", link_file.display());
     let links = load_links(link_file)?;
+    log::info!("Number of links: {}", links.len());
     for link in links {
         let dst_node = nodes.get_mut(&link.dst_node_guid).unwrap();
         let dst_port = Arc::make_mut(dst_node)
             .ports
             .get_mut(&link.dst_port_idx)
             .unwrap();
-        dst_port.1 = Some(Arc::new(link.swap()));
+        dst_port.link = Some(Arc::new(link.swap()));
         let src_node = nodes.get_mut(&link.src_node_guid).unwrap();
         let src_port = Arc::make_mut(src_node)
             .ports
             .get_mut(&link.src_port_idx)
             .unwrap();
-        src_port.1 = Some(Arc::new(link));
+        src_port.link = Some(Arc::new(link));
     }
     // set lid of nodes
     for node in nodes.values_mut() {
@@ -291,29 +321,35 @@ pub fn load_nodes(
             NodeType::HCA => CA_LID_PORT_IDX,
         };
         let node = Arc::make_mut(node);
-        node.lid = node.ports.get(&lid_node_idx).unwrap().0.lid;
+        node.lid = node.ports.get(&lid_node_idx).unwrap().lid;
     }
     Ok(nodes)
 }
 
 pub fn load_groups(
     file: impl AsRef<std::path::Path>,
-) -> Result<(Guid, FxHashMap<GroupIdx, GroupSpec>), Box<dyn std::error::Error>> {
+) -> Result<(Guid, FxHashMap<GroupIdx, GroupSpec>), Error> {
     let file_name = file
         .as_ref()
         .file_prefix()
-        .ok_or("File path should not terminates with . or ..")?
+        .context(FileNameSnafu {
+            filename: file.as_ref(),
+        })?
         .to_str()
-        .ok_or("Invalid UTF-8 file name")?;
-    let guid = Guid::from_str_radix(&file_name[2..], 16)?;
-    let file = std::fs::File::open(file)?;
+        .context(FileNameSnafu {
+            filename: file.as_ref(),
+        })?;
+    let guid = Guid::from_str_radix(&file_name[2..], 16).context(ParseIntSnafu {})?;
+    let file = std::fs::File::open(file).context(FileIoSnafu {})?;
     let mut groups = FxHashMap::default();
     let mut rdr = ReaderBuilder::new().delimiter(b'|').from_reader(file);
     let mut raw_record = csv::StringRecord::new();
-    let headers = rdr.headers()?.clone();
-    while rdr.read_record(&mut raw_record)? {
+    let headers = rdr.headers().context(ParseCsvSnafu {})?.clone();
+    while rdr.read_record(&mut raw_record).context(ParseCsvSnafu {})? {
         let mut spec = GroupSpec::default();
-        let gr: GroupRecord = raw_record.deserialize(Some(&headers))?;
+        let gr: GroupRecord = raw_record
+            .deserialize(Some(&headers))
+            .context(ParseCsvSnafu {})?;
         spec.group_idx = gr.Group;
         if let Some(ports) = get_cache().get(gr.Ports) {
             spec.ports = ports.clone();
@@ -334,23 +370,28 @@ pub fn load_groups(
     Ok((guid, groups))
 }
 
-pub fn load_lft(
-    file: impl AsRef<std::path::Path>,
-) -> Result<(Guid, Vec<LftEntry>), Box<dyn std::error::Error>> {
+pub fn load_lft(file: impl AsRef<std::path::Path>) -> Result<(Guid, Vec<LftEntry>), Error> {
     let file_name = file
         .as_ref()
         .file_prefix()
-        .ok_or("File path should not terminates with . or ..")?
+        .context(FileNameSnafu {
+            filename: file.as_ref(),
+        })?
         .to_str()
-        .ok_or("Invalid UTF-8 file name")?;
-    let guid = Guid::from_str_radix(&file_name[2..], 16)?;
-    let file = std::fs::File::open(file)?;
+        .context(FileNameSnafu {
+            filename: file.as_ref(),
+        })?;
+
+    let guid = Guid::from_str_radix(&file_name[2..], 16).context(ParseIntSnafu {})?;
+    let file = std::fs::File::open(file).context(FileIoSnafu {})?;
     let mut lft = vec![];
     let mut rdr = ReaderBuilder::new().delimiter(b'|').from_reader(file);
     let mut raw_record = csv::StringRecord::new();
-    let headers = rdr.headers()?.clone();
-    while rdr.read_record(&mut raw_record)? {
-        let lr: LftRecord = raw_record.deserialize(Some(&headers))?;
+    let headers = rdr.headers().context(ParseCsvSnafu {})?.clone();
+    while rdr.read_record(&mut raw_record).context(ParseCsvSnafu {})? {
+        let lr: LftRecord = raw_record
+            .deserialize(Some(&headers))
+            .context(ParseCsvSnafu {})?;
         let entry = LftEntry {
             lid: lr.LID,
             port: lr.StaticPort,

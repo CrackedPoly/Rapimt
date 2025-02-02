@@ -3,11 +3,12 @@ use std::sync::Arc;
 use fxhash::FxHashMap;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use petgraph::algo::all_simple_paths;
-use rapimt_io::ib::loader::{Guid, LinkSpec};
+use petgraph::graph::DiGraph;
+use rapimt_io::ib::loader::{Guid, LinkSpec, NodeCommon};
 use regex::bytes::{RegexSet, RegexSetBuilder};
 
-use super::CachedFwdGraph;
-use super::{IbPluginReport, PluginExecutorLike};
+use super::{IbPluginReport, PluginLike};
+use crate::error::Error;
 
 #[derive(IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
@@ -38,8 +39,10 @@ pub fn label_node_topo_type(node_desc: &str) -> u8 {
 }
 
 /// Require that all simple path have to match exactly one of regex in a regex set.
+#[derive(Debug)]
 pub struct SimplePathExactRegexSetPlugin {
     name: Arc<str>,
+    enabled: bool,
     pattern_count: Vec<(String, usize)>,
     regex_set: RegexSet,
 }
@@ -59,52 +62,49 @@ impl SimplePathExactRegexSetPlugin {
             .unwrap();
         Self {
             name: name.into(),
+            enabled: true,
             pattern_count,
             regex_set,
         }
     }
 }
 
-impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
-    type NID = Guid;
+impl PluginLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
+    type NK = Guid;
+    type Node = Arc<NodeCommon>;
     type Edge = Arc<LinkSpec>;
 
     fn get_name(&self) -> Arc<str> {
         self.name.clone()
     }
 
-    fn _execute(&self, cgraph: &mut CachedFwdGraph<Self::NID, Self::Edge, IbPluginReport>) {
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    fn execute(&self, g: &DiGraph<Self::Node, Self::Edge>) -> Result<IbPluginReport, Error> {
         // we clone the regexset, the recommended way.
         // (https://docs.rs/regex/latest/regex/index.html#sharing-a-regex-across-threads-can-result-in-contention)
         let regex_set = self.regex_set.clone();
-        let g = &cgraph.graph;
         // we only verify graphs that have at least one host
         let dsts: Vec<_> = g
             .node_indices()
             .filter(|i| g[*i].label == NodeTopoType::Host.into())
             .collect();
         if dsts.is_empty() {
-            cgraph.report_cache.insert(
-                self.get_name(),
-                IbPluginReport {
-                    to_lid: None,
-                    to_guid: None,
-                    should_report: false,
-                    report: Ok("INFO: No host found in the graph, skip it.".into()),
-                },
-            );
-            return;
+            return Ok(IbPluginReport {
+                to_lid: None,
+                to_guid: None,
+                should_report: false,
+                report: Ok("INFO: No host found in the graph, skip it.".into()),
+            });
         } else if dsts.len() > 1 {
-            cgraph.report_cache.insert(
-                self.get_name(),
-                IbPluginReport {
-                    to_lid: None,
-                    to_guid: None,
-                    should_report: false,
-                    report: Err("ERROR: More than one host found in the graph.".into()),
-                },
-            );
-            return;
+            return Ok(IbPluginReport {
+                to_lid: None,
+                to_guid: None,
+                should_report: false,
+                report: Err("ERROR: More than one host found in the graph.".into()),
+            });
         }
         // pattern count
         let mut count_map = FxHashMap::default();
@@ -133,25 +133,19 @@ impl PluginExecutorLike<IbPluginReport> for SimplePathExactRegexSetPlugin {
             string_builder.push_str(format!(": {} ", count).as_str());
         }
         if mismatch {
-            cgraph.report_cache.insert(
-                self.get_name(),
-                IbPluginReport {
-                    to_lid: Some(g[dst].lid),
-                    to_guid: Some(g[dst].node_guid),
-                    should_report: true,
-                    report: Ok(format!("ERROR: {}", string_builder)),
-                },
-            );
+            Ok(IbPluginReport {
+                to_lid: Some(g[dst].lid),
+                to_guid: Some(g[dst].node_guid),
+                should_report: true,
+                report: Ok(format!("ERROR: {}", string_builder)),
+            })
         } else {
-            cgraph.report_cache.insert(
-                self.get_name(),
-                IbPluginReport {
-                    to_lid: Some(g[dst].lid),
-                    to_guid: Some(g[dst].node_guid),
-                    should_report: false,
-                    report: Ok(format!("INFO: {}", string_builder)),
-                },
-            );
+            Ok(IbPluginReport {
+                to_lid: Some(g[dst].lid),
+                to_guid: Some(g[dst].node_guid),
+                should_report: false,
+                report: Ok(format!("INFO: {}", string_builder)),
+            })
         }
     }
 }

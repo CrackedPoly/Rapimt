@@ -17,6 +17,8 @@ pub mod prelude {
 use im::{InverseModel, InverseModelMonoid};
 use rapimt_core::prelude::{Action, Dimension, Predicate, PredicateInner, Single};
 
+pub trait RawRuleLike {}
+
 pub trait RuleLike {
     type A: Action<Single>;
     type P: PredicateInner;
@@ -33,12 +35,12 @@ pub trait RuleLike {
 /// [M]: Inverse model monoid type.
 /// [P]: Predicate type inside the monitor.
 /// [R]: Rule type stored inside the monitor.
-pub trait RuleMonitorLike<A, OA, T, M, P, R>
+pub trait RuleMonitorLike<A, OA, OT, M, P, R>
 where
     A: Action<Single>,
-    OA: Action<T, S = A>,
-    T: Dimension,
-    M: InverseModelMonoid<OA, P, T>,
+    OA: Action<OT, S = A>,
+    OT: Dimension,
+    M: InverseModelMonoid<OA, P, OT>,
     P: PredicateInner,
     R: RuleLike<A = A, P = P>,
 {
@@ -51,14 +53,14 @@ where
         &mut self,
         insertion: impl IntoIterator<Item = R>,
         deletion: impl IntoIterator<Item = R>,
-    ) -> InverseModel<OA, P, T, M>;
+    ) -> InverseModel<OA, P, OT, M>;
 
     /// Provided methods
-    fn insert(&mut self, insertion: impl IntoIterator<Item = R>) -> InverseModel<OA, P, T, M> {
+    fn insert(&mut self, insertion: impl IntoIterator<Item = R>) -> InverseModel<OA, P, OT, M> {
         self.update(insertion, vec![])
     }
 
-    fn delete(&mut self, deletion: impl IntoIterator<Item = R>) -> InverseModel<OA, P, T, M> {
+    fn delete(&mut self, deletion: impl IntoIterator<Item = R>) -> InverseModel<OA, P, OT, M> {
         self.update(vec![], deletion)
     }
 }

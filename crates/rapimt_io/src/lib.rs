@@ -3,6 +3,7 @@
 #![feature(path_file_prefix)]
 
 pub mod default;
+pub mod error;
 pub mod ib;
 
 #[allow(missing_docs)]
@@ -14,5 +15,6 @@ pub mod prelude {
             FibLoader, InstanceLoader,
         },
         ib::{db_csv_parser::csv_parser, loader::*},
+        error::*,
     };
 }

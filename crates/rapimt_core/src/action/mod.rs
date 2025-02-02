@@ -32,9 +32,11 @@ pub mod seq_action;
 pub mod tree_action;
 
 use std::{
+    error::Error,
     fmt::{Debug, Display},
     hash::Hash,
-    rc::Rc, sync::Arc,
+    rc::Rc,
+    sync::Arc,
 };
 
 pub trait ActionType:
@@ -88,10 +90,11 @@ pub trait UncodedAction<'a>: Action<Single> + Clone {
     /// Type of neighbor representation.
     type N;
     type P;
+    type Err;
 
     fn get_type(&self) -> impl Into<u8>;
-    fn get_ports(&self) -> Option<Box<dyn Iterator<Item = Self::P> + 'a>>;
-    fn get_next_hops(&self) -> Option<Box<dyn Iterator<Item = Self::N> + 'a>>;
+    fn get_ports(&self) -> Result<Box<dyn Iterator<Item = Self::P> + 'a>, Self::Err>;
+    fn get_next_hops(&self) -> Result<Box<dyn Iterator<Item = Self::N> + 'a>, Self::Err>;
 }
 
 /// Encoded, compact and opaque action.
@@ -158,17 +161,17 @@ impl_coded_action_for_ints!(usize, u128, u64, u32, u16, u8, isize, i128, i64, i3
 /// This trait implementors should have all information about this device's topology (name, ports,
 /// port mode, neighbors). The interface may be enriched.
 pub trait ActionEncoder<'a>
-where
-    Self: 'a,
 {
     type A: CodedAction;
-    type UA: UncodedAction<'a> + 'a;
+    type UA: UncodedAction<'a>;
     /// lookup key
     type K: ?Sized;
-    fn encode(&'a self, action: Self::UA) -> Self::A;
-    fn decode(&'a self, coded_action: Self::A) -> Self::UA;
-    fn lookup(&'a self, port_name: impl AsRef<Self::K>) -> Option<Self::UA>;
-    fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Option<Self::A>;
+    type Err: Error;
+
+    fn encode(&'a self, action: Self::UA) -> Result<Self::A, Self::Err>;
+    fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Result<Self::A, Self::Err>;
+    fn decode(&'a self, coded_action: Self::A) -> Result<Self::UA, Self::Err>;
+    fn lookup(&'a self, port_name: impl AsRef<Self::K>) -> Result<Self::UA, Self::Err>;
 }
 
 /// Container of multiple actions.
