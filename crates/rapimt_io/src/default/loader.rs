@@ -17,8 +17,8 @@ use nom::{
     combinator::{all_consuming, map, not},
     error::{ErrorKind, ParseError},
     multi::{separated_list0, separated_list1},
-    sequence::{delimited, pair, preceded, separated_pair, tuple},
-    IResult,
+    sequence::{delimited, pair, preceded, separated_pair},
+    IResult, Parser,
 };
 
 use rapimt_core::prelude::{
@@ -326,15 +326,16 @@ impl InstanceLoader<'_, PortInfoBase> for DefaultInstLoader {
             })
         };
 
-        let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
+        let (rest, dev) = delimited(multispace0, parse_dev, multispace1).parse(content)?;
         let (rest, _) = separated_list0(
             multispace1,
             alt((
                 map(parse_neighbor_info, capture_nbr_info),
                 map(parse_port_info, capture_port_info),
             )),
-        )(rest)?;
-        let (_, _) = all_consuming(multispace0)(rest)?;
+        )
+        .parse(rest)?;
+        let (_, _) = all_consuming(multispace0).parse(rest)?;
 
         let nbrs_mut = unsafe { &mut *nbrs.get() };
         let ports_mut = unsafe { &mut *ports.get() };
@@ -359,11 +360,11 @@ impl InstanceLoader<'_, PortInfoBase> for DefaultInstLoader {
 }
 
 fn parse_dev<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
-    preceded(pair(tag("name"), multispace1), parse_ident)(input)
+    preceded(pair(tag("name"), multispace1), parse_ident).parse(input)
 }
 
 fn parse_mode<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, FwdActionType, E> {
-    let (rest, mode) = alt((tag("ecmp"), tag("flood")))(input)?;
+    let (rest, mode) = alt((tag("ecmp"), tag("flood"))).parse(input)?;
     match mode {
         "ecmp" => Ok((rest, FwdActionType::ECMP)),
         "flood" => Ok((rest, FwdActionType::FLOOD)),
@@ -372,20 +373,24 @@ fn parse_mode<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Fw
 }
 
 fn parse_port<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
-    if not(alt((tag::<&str, &str, E>("port"), tag("neighbor"))))(input).is_ok() {
+    if not(alt((tag::<&str, &str, E>("port"), tag("neighbor"))))
+        .parse(input)
+        .is_ok()
+    {
         return parse_ident(input);
     }
     Err(nom::Err::Error(E::from_error_kind(input, ErrorKind::Tag)))
 }
 fn parse_port_info<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PortInfo, E> {
-    let (rest, _) = pair(tag("port"), multispace1)(input)?;
-    let (rest, (port, _, mode, _, ports)) = tuple((
+    let (rest, _) = pair(tag("port"), multispace1).parse(input)?;
+    let (rest, (port, _, mode, _, ports)) = (
         parse_port,
         multispace1,
         parse_mode,
         multispace1,
         separated_list1(multispace1, parse_port),
-    ))(rest)?;
+    )
+        .parse(rest)?;
     Ok((
         rest,
         PortInfo {
@@ -400,8 +405,8 @@ fn parse_port_info<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a st
 fn parse_neighbor_info<'a, E: ParseError<&'a str>>(
     input: &'a str,
 ) -> IResult<&'a str, (&'a str, NeighborInfo), E> {
-    let (rest, _) = pair(tag("neighbor"), multispace1)(input)?;
-    let (rest, (port, nbr)) = separated_pair(parse_port, multispace1, parse_ident)(rest)?;
+    let (rest, _) = pair(tag("neighbor"), multispace1).parse(input)?;
+    let (rest, (port, nbr)) = separated_pair(parse_port, multispace1, parse_ident).parse(rest)?;
     Ok((
         rest,
         (
@@ -428,9 +433,10 @@ impl<'a> FibLoader<'a, usize> for PortInfoBase {
         'a: 'p,
         'p: 'a,
     {
-        let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
-        let (rest, rules) = separated_list0(multispace1, parse_ipv4_rule(engine, self))(rest)?;
-        let (_, _) = all_consuming(multispace0)(rest)?;
+        let (rest, dev) = delimited(multispace0, parse_dev, multispace1).parse(content)?;
+        let (rest, rules) =
+            separated_list0(multispace1, parse_ipv4_rule(engine, self)).parse(rest)?;
+        let (_, _) = all_consuming(multispace0).parse(rest)?;
         Ok(((), (dev.to_owned(), rules)))
     }
 }
@@ -448,10 +454,10 @@ impl<'a> FibLoader<'a, TypedAction<'a>> for PortInfoBase {
         'a: 'p,
         'p: 'a,
     {
-        let (rest, dev) = delimited(multispace0, parse_dev, multispace1)(content)?;
+        let (rest, dev) = delimited(multispace0, parse_dev, multispace1).parse(content)?;
         let (rest, rules) =
-            separated_list0(multispace1, parse_ipv4_rule_uncoded(engine, self))(rest)?;
-        let (_, _) = all_consuming(multispace0)(rest)?;
+            separated_list0(multispace1, parse_ipv4_rule_uncoded(engine, self)).parse(rest)?;
+        let (_, _) = all_consuming(multispace0).parse(rest)?;
         Ok(((), (dev.to_owned(), rules)))
     }
 }
@@ -471,7 +477,7 @@ where
     'p: 'a,
 {
     move |input| {
-        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = tuple((
+        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = (
             tag("fw"),
             multispace1,
             alt((parse_ipv4_dotted, parse_ipv4_num)),
@@ -481,7 +487,8 @@ where
             map(parse_digits, |s: &str| s.parse::<i32>().unwrap()),
             multispace1,
             parse_port,
-        ))(input)?;
+        )
+            .parse(input)?;
         let value = value as u128;
         let mask: u128 = ((1 << p_len) - 1) << (32 - p_len);
         let fm = FieldMatch {
@@ -514,7 +521,7 @@ where
     E: ParseError<&'x str>,
 {
     move |input| {
-        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = tuple((
+        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = (
             tag("fw"),
             multispace1,
             alt((parse_ipv4_dotted, parse_ipv4_num)),
@@ -524,7 +531,8 @@ where
             map(parse_digits, |s: &str| s.parse::<i32>().unwrap()),
             multispace1,
             parse_port,
-        ))(input)?;
+        )
+            .parse(input)?;
         let value = value as u128;
         let mask: u128 = ((1 << p_len) - 1) << (32 - p_len);
         let fm = FieldMatch {
