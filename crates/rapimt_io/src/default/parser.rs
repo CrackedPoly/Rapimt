@@ -23,7 +23,7 @@ pub mod basic {
     }
 
     fn is_ident(chr: char) -> bool {
-        AsChar::is_dec_digit(chr as u8) || chr == '_' || chr == '-' || chr == '.' || chr == '/'
+        AsChar::is_alphanum(chr as u8) || chr == '_' || chr == '-' || chr == '.' || chr == '/'
     }
 
     /// r"[a-zA-Z0-9_-\.\/]+"
@@ -67,7 +67,7 @@ pub mod basic {
     /// or else instead.**
     pub fn parse_port<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
         fn is_port_ident(chr: char) -> bool {
-            AsChar::is_dec_digit(chr as u8)
+            AsChar::is_alphanum(chr as u8)
                 || chr == '/'
                 || chr == '.'
                 || chr == '-'

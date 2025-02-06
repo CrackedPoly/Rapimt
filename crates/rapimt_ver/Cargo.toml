@@ -17,7 +17,3 @@ petgraph = { version = "0.7.1" }
 rayon = { version = "1.10.0" }
 
 [dev-dependencies]
-
-[[example]]
-name = "ib_snapshot"
-path = "src/main.rs"
