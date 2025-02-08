@@ -1,10 +1,10 @@
-name: flash
+name: Flash
 
 on:
   push:
 
 env:
-  REGISTRY_IMAGE: CrackedPoly/flash
+  REGISTRY_IMAGE: crackedpoly/flash
   REGISTRY: ghcr.io
 
 jobs:
