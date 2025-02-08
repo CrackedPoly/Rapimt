@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use fxhash::FxHashMap;
 use petgraph::{acyclic::Acyclic, data::Build, graph::DiGraph, visit::Bfs};
@@ -14,13 +14,12 @@ use rapimt_io::ib::{
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-use super::{CachedFwdGraph, IbPluginReport, PluginLike, SnapshotQuery};
 use crate::error::*;
+use crate::{plugin::GraphPluginLike, AnyReport, CachedFwdGraph, SnapshotQuery};
 
 type ActionsRepr = Arc<Vec<FusedIdx>>;
 type IM<P> = InverseModel<ActionsRepr, P, Multiple, Vec<(ActionsRepr, Predicate<P>)>>;
-type AnyPlugin<R> =
-    Arc<RwLock<dyn PluginLike<R, NK = Guid, Node = Arc<NodeCommon>, Edge = Arc<LinkSpec>>>>;
+type AnyGraphPlugin = Box<dyn GraphPluginLike<Guid, Arc<NodeCommon>, Arc<LinkSpec>>>;
 
 pub struct SnapshotVerifier<'p, ME>
 where
@@ -34,11 +33,8 @@ where
     // fast lookup actions by predicate
     query_cache: FxHashMap<Predicate<ME::P>, ActionsRepr>,
     // forwarding graphs
-    graphs: FxHashMap<
-        ActionsRepr,
-        CachedFwdGraph<Guid, Arc<NodeCommon>, Arc<LinkSpec>, IbPluginReport>,
-    >,
-    plugins: Vec<AnyPlugin<IbPluginReport>>,
+    graphs: FxHashMap<ActionsRepr, CachedFwdGraph<Guid, Arc<NodeCommon>, Arc<LinkSpec>>>,
+    plugins: Vec<AnyGraphPlugin>,
 }
 
 impl<'p, ME> SnapshotVerifier<'p, ME>
@@ -140,7 +136,6 @@ where
                     graph,
                     loop_exists,
                     node_map,
-                    cache: FxHashMap::default(),
                     plugin: FxHashMap::default(),
                 }
             });
@@ -153,49 +148,46 @@ where
     }
 
     /// Register a verification plugin.
-    pub fn register_plugin(&mut self, plugin: AnyPlugin<IbPluginReport>) {
-        log::info!("Registering plugin: {}", &plugin.read().unwrap().get_name());
-        self.plugins.push(plugin.clone());
+    pub fn register_plugin(&mut self, plugin: AnyGraphPlugin) {
+        log::info!("Registering plugin: {}", &plugin.get_name());
+        self.plugins.push(plugin.clone_boxed());
         for graph in self.graphs.values_mut() {
-            graph.add_plugin(plugin.clone());
+            graph.add_plugin(plugin.clone_boxed());
         }
     }
 
     /// Execute all verification plugins.
     pub fn verify(&mut self) -> Result<(), Error> {
         // ensure plugins are present in new graphs
-        for plugin in &self.plugins {
-            for graph in self.graphs.values_mut() {
-                if !graph.has_plugin(&plugin.read().unwrap().get_name()) {
-                    graph.add_plugin(plugin.clone());
+        for graph in self.graphs.values_mut() {
+            for plugin in &self.plugins {
+                if !graph.has_plugin(plugin.get_name()) {
+                    graph.add_plugin(plugin.clone_boxed());
                 }
             }
         }
+        self.graphs.par_iter_mut().for_each(|(_, graph)| {
+            graph.execute();
+        });
         // run verification
-        for plugin in &self.plugins {
-            if plugin.read().unwrap().enabled() {
-                self.graphs.par_iter_mut().for_each(|(_, graph)| {
-                    graph.get_report(&plugin.read().unwrap().get_name());
-                });
-            }
-        }
         Ok(())
     }
 }
 
-impl<'p, ME> SnapshotQuery<IbPluginReport> for SnapshotVerifier<'p, ME>
+impl<'p, ME> SnapshotQuery for SnapshotVerifier<'p, ME>
 where
     ME: MatchEncoder<'p>,
 {
     type NK = Guid;
     type Edge = Arc<LinkSpec>;
 
-    fn list_alert(&self) -> Vec<IbPluginReport> {
+    fn list_alert(&self) -> Vec<AnyReport> {
         let mut alerts = vec![];
         for graph in self.graphs.values() {
-            for report in graph.cache.values() {
-                if report.should_report {
-                    alerts.push(report.clone());
+            for plugin in graph.plugin.values() {
+                let report = plugin.report();
+                if report.should_report() {
+                    alerts.push(report);
                 }
             }
         }

@@ -4,7 +4,7 @@ use axum::{
 };
 use rapimt_core::r#match::engine::OxiddPredicateEngine;
 use rapimt_io::ib::loader::{Guid, Lid};
-use rapimt_ver::ib::SnapshotQuery;
+use rapimt_ver::SnapshotQuery;
 use serde::{Deserialize, Serialize};
 
 use super::SharedVerifier;

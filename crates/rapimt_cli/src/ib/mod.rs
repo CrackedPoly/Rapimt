@@ -2,12 +2,13 @@ pub mod server;
 
 use clap::Parser;
 use rapimt_io::ib::IbDataPlaneConfig;
-use std::sync::RwLock;
 use std::{path::PathBuf, sync::Arc};
 
 use rapimt_core::r#match::engine::MatchEncoder;
-use rapimt_ver::ib::requirement::{label_node_topo_type, SimplePathExactRegexSetPlugin};
-use rapimt_ver::ib::snapshot::SnapshotVerifier;
+use rapimt_ver::{
+    plugin::{GraphPluginLike, regexset::{label_node_topo_type, SimplePathExactRegexSetPlugin}},
+    ib::snapshot::SnapshotVerifier,
+};
 
 #[derive(Parser, Debug)]
 #[command(bin_name = "ib_oneshot_check")]
@@ -67,11 +68,11 @@ pub fn build_verifier<'p, ME: MatchEncoder<'p>>(
     };
     let mut verifier = SnapshotVerifier::new(&dp_config).unwrap();
     // INFO: L: Leaf switch, S: Spine switch, C: Core switch, H: Host
-    let plugin = Arc::new(RwLock::new( SimplePathExactRegexSetPlugin::new(
+    let plugin = SimplePathExactRegexSetPlugin::new(
         "Simple path count",
         cli.pattern_count.into_iter().map(|p| (p.pattern, p.count)).collect::<Vec<_>>(),
-    )));
-    verifier.register_plugin(plugin);
+    );
+    verifier.register_plugin(plugin.clone_boxed());
     verifier.refresh().unwrap();
     Arc::new(verifier)
 }
