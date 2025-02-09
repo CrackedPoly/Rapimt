@@ -1,4 +1,4 @@
-FROM rust:1.84.1-slim-bookworm AS build
+FROM --platform=$BUILDPLATFORM rust:1.84 AS build
 COPY . .
 RUN cargo build -p rapimt_cli --release
 
