@@ -1,4 +1,6 @@
 //! Action encoding and decoding, and match encoding.
+#![feature(vec_into_raw_parts)]
+#![feature(hasher_prefixfree_extras)]
 pub mod action;
 pub mod r#match;
 

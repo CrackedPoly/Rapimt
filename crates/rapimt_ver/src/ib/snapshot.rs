@@ -3,7 +3,7 @@ use std::sync::Arc;
 use fxhash::FxHashMap;
 use petgraph::{acyclic::Acyclic, data::Build, graph::DiGraph, visit::Bfs};
 use rapimt_core::{
-    action::{ActionEncoder, Actions, Multiple, UncodedAction},
+    action::{seq_action::SeqAction, ActionEncoder, Actions, Multiple, UncodedAction},
     r#match::{engine::MatchEncoder, predicate::Predicate},
 };
 use rapimt_im::im::InverseModel;
@@ -17,7 +17,7 @@ use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use crate::error::*;
 use crate::{plugin::GraphPluginLike, AnyReport, CachedFwdGraph, SnapshotQuery};
 
-type ActionsRepr = Arc<Vec<FusedIdx>>;
+type ActionsRepr = Arc<SeqAction<FusedIdx>>;
 type IM<P> = InverseModel<ActionsRepr, P, Multiple, Vec<(ActionsRepr, Predicate<P>)>>;
 type AnyGraphPlugin = Box<dyn GraphPluginLike<Guid, Arc<NodeCommon>, Arc<LinkSpec>>>;
 
@@ -91,7 +91,7 @@ where
                 num_new += 1;
                 let mut loop_exists = false;
                 let mut graph = DiGraph::new();
-                graph.reserve_nodes(action.len());
+                graph.reserve_nodes(action.ndim());
                 let mut node_map = FxHashMap::default();
                 let mut graph = Acyclic::try_from_graph(graph).unwrap();
 

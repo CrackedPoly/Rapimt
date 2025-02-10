@@ -140,14 +140,14 @@ impl Action<Single> for TypedAction<'_> {
         TypedAction::NonOverwrite
     }
 
-    fn overwrite(&self, rhs: &Self) -> Self {
+    fn overwritten(&self, rhs: &Self) -> Self {
         match rhs {
             TypedAction::NonOverwrite => *self,
             _ => *rhs,
         }
     }
 
-    fn overwrite_(&mut self, rhs: &Self) {
+    fn overwritten_(&mut self, rhs: &Self) {
         match rhs {
             TypedAction::NonOverwrite => {}
             _ => *self = *rhs,
@@ -556,7 +556,7 @@ where
 #[cfg(test)]
 mod tests {
     use fxhash::FxHashMap;
-    use rapimt_core::r#match::engine::RuddyPredicateEngine;
+    use rapimt_core::{action::seq_action::SeqAction, r#match::engine::RuddyPredicateEngine};
     use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore};
 
     use super::*;
@@ -752,7 +752,7 @@ mod tests {
         let im: InverseModel<_, _, _, FxHashMap<usize, _>> = fib_monitor.insert(fibs);
         assert_eq!(im.len(), 3);
 
-        let im = InverseModel::<_, _, _, FxHashMap<Vec<usize>, _>>::from(im);
+        let im = InverseModel::<_, _, _, FxHashMap<SeqAction<usize>, _>>::from(im);
         assert_eq!(im.len(), 3);
 
         // load fib rules and encode action to TypedAction with codex, run the same as above
