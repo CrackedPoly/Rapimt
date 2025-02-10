@@ -16,7 +16,11 @@ static ENGINE: LazyLock<Arc<OxiddPredicateEngine>> =
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    let env = env_logger::Env::default()
+        .filter_or("LOG_LEVEL", "info")
+        .write_style_or("LOG_STYLE", "always");
+    env_logger::init_from_env(env);
+
     let cli = Cli::parse();
     log::info!("args: {:?}", cli);
     let verifier = build_verifier(cli, ENGINE.as_ref());
