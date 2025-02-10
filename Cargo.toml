@@ -1,6 +1,6 @@
 [package]
 name = "rapimt"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -31,7 +31,7 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 snafu = { version = "0.8.5" }
 
 [dependencies]
-rapimt_internal = { path = "crates/rapimt_internal" }
+rapimt_internal = { path = "crates/rapimt_internal" , version = "0.2.2" }
 document-features = "0.2"
 
 [features]
