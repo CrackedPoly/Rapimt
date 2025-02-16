@@ -1,5 +1,5 @@
-pub mod rsl;
 pub mod regexset;
+pub mod rsl;
 
 use std::sync::Arc;
 

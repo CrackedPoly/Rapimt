@@ -122,7 +122,11 @@ impl GraphPluginLike<Guid, Arc<NodeCommon>, Arc<LinkSpec>> for SimplePathExactRe
         })
     }
 
-    fn recognize_path(&mut self, graph: &DiGraph<Arc<NodeCommon>, Arc<LinkSpec>>, path: &[NodeIndex]) {
+    fn recognize_path(
+        &mut self,
+        graph: &DiGraph<Arc<NodeCommon>, Arc<LinkSpec>>,
+        path: &[NodeIndex],
+    ) {
         // if exception has been raised, skip the path
         if self.exception.is_some() {
             return;

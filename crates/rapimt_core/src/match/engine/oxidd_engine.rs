@@ -60,9 +60,8 @@ impl OxiddPredicateEngine {
             var_pair.push((BDDFunction::t(manager), BDDFunction::f(manager)))
         });
         for _ in 0..constant::MAX_POS {
-            let v= manager_ref.with_manager_exclusive(|manager| {
-                BDDFunction::new_var(manager).unwrap()
-            });
+            let v = manager_ref
+                .with_manager_exclusive(|manager| BDDFunction::new_var(manager).unwrap());
             let nv = v.not().unwrap();
             var_pair.push((v, nv));
         }

@@ -1,7 +1,10 @@
 use std::time::SystemTime;
 
 use fxhash::FxHashMap;
-use rapimt_core::{action::seq_action::SeqAction, prelude::{OxiddPredicateEngine, RuddyPredicateEngine}};
+use rapimt_core::{
+    action::seq_action::SeqAction,
+    prelude::{OxiddPredicateEngine, RuddyPredicateEngine},
+};
 use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore};
 use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 

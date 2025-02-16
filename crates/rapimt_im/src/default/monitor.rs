@@ -163,7 +163,19 @@ where
     tmp_ow: UnsafeCell<FxHashMap<A, Predicate<ME::P>>>,
 }
 
-impl<'p, A, OA, T, ME, RS> RuleMonitorLike<A, OA, T, FxHashMap<OA, Predicate<ME::P>>, ME::P, Rule<ME::P, A>> for FastRuleMonitor<'p, A, ME, RS> where A: Action<Single>, OA: Action<T, S = A>, T: Dimension, ME: MatchEncoder<'p>, RS: RuleStore<A, ME::P>, { fn clear(&mut self) { self.store.clear(); self.i_rules.clear();
+impl<'p, A, OA, T, ME, RS>
+    RuleMonitorLike<A, OA, T, FxHashMap<OA, Predicate<ME::P>>, ME::P, Rule<ME::P, A>>
+    for FastRuleMonitor<'p, A, ME, RS>
+where
+    A: Action<Single>,
+    OA: Action<T, S = A>,
+    T: Dimension,
+    ME: MatchEncoder<'p>,
+    RS: RuleStore<A, ME::P>,
+{
+    fn clear(&mut self) {
+        self.store.clear();
+        self.i_rules.clear();
         self.d_rules.clear();
         self.i_rules.push(self.default_rule.clone());
     }

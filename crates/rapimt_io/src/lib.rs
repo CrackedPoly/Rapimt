@@ -14,7 +14,7 @@ pub mod prelude {
             loader::{DefaultInstLoader, PortInfoBase, TypedAction},
             FibLoader, InstanceLoader,
         },
-        ib::{db_csv_parser::csv_parser, loader::*},
         error::*,
+        ib::{db_csv_parser::csv_parser, loader::*},
     };
 }

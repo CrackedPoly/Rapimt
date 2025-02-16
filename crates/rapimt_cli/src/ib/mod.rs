@@ -6,8 +6,11 @@ use std::{path::PathBuf, sync::Arc};
 
 use rapimt_core::r#match::engine::MatchEncoder;
 use rapimt_ver::{
-    plugin::{GraphPluginLike, regexset::{label_node_topo_type, SimplePathExactRegexSetPlugin}},
     ib::snapshot::SnapshotVerifier,
+    plugin::{
+        regexset::{label_node_topo_type, SimplePathExactRegexSetPlugin},
+        GraphPluginLike,
+    },
 };
 
 #[derive(Parser, Debug)]
@@ -26,12 +29,16 @@ pub struct Cli {
         help = "Directory to the topology files (output sections of ibdiagnet2.db_csv)"
     )]
     pub topology_dir: PathBuf,
-    #[arg(short, long, help = "Directory to the route files (output sections of ibdiagnet2.far)")]
+    #[arg(
+        short,
+        long,
+        help = "Directory to the route files (output sections of ibdiagnet2.far)"
+    )]
     pub route_dir: PathBuf,
 
     #[arg(
-        short, 
-        long, 
+        short,
+        long,
         value_delimiter = ',',
         num_args = 1..,
         help = "Expected exact path patterns and their count, valid symbols: L(leaf), S(spine), C(core), H(host)"
@@ -70,7 +77,10 @@ pub fn build_verifier<'p, ME: MatchEncoder<'p>>(
     // INFO: L: Leaf switch, S: Spine switch, C: Core switch, H: Host
     let plugin = SimplePathExactRegexSetPlugin::new(
         "Simple path count",
-        cli.pattern_count.into_iter().map(|p| (p.pattern, p.count)).collect::<Vec<_>>(),
+        cli.pattern_count
+            .into_iter()
+            .map(|p| (p.pattern, p.count))
+            .collect::<Vec<_>>(),
     );
     verifier.register_plugin(plugin.clone_boxed());
     verifier.refresh().unwrap();

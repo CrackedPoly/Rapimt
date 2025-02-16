@@ -160,8 +160,7 @@ impl_coded_action_for_ints!(usize, u128, u64, u32, u16, u8, isize, i128, i64, i3
 ///
 /// This trait implementors should have all information about this device's topology (name, ports,
 /// port mode, neighbors). The interface may be enriched.
-pub trait ActionEncoder<'a>
-{
+pub trait ActionEncoder<'a> {
     type A: CodedAction;
     type UA: UncodedAction<'a>;
     /// lookup key

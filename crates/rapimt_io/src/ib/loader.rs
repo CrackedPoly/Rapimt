@@ -8,7 +8,10 @@ use funty::Unsigned;
 use fxhash::{FxBuildHasher, FxHashMap};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use rapimt_core::{
-    action::{ib::IbActionType, seq_action::SeqAction, Action, ActionEncoder, Multiple, Single, UncodedAction},
+    action::{
+        ib::IbActionType, seq_action::SeqAction, Action, ActionEncoder, Multiple, Single,
+        UncodedAction,
+    },
     r#match::{
         engine::MatchEncoder,
         predicate::Predicate,

@@ -54,9 +54,7 @@ fn parse_fib_rule(pair: Pair<'_, Rule>) -> RawIbFibRule {
         match p.as_rule() {
             Rule::hex_ident => rule.lid = parse_hex_ident(p),
             Rule::digit_ident => rule.port = parse_dec_ident(p),
-            Rule::parenthesed => {
-                rule.description = p.as_str()[1..p.as_str().len() - 1].to_string()
-            }
+            Rule::parenthesed => rule.description = p.as_str()[1..p.as_str().len() - 1].to_string(),
             _ => {}
         }
     }

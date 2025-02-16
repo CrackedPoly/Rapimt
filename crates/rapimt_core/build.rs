@@ -29,9 +29,9 @@ use std::path::Path;
 ///         ("dip", (96usize, 128usize)),
 ///     ],
 /// };
-/// 
+///
 /// pub const MAX_POS: usize = 128usize;
-/// 
+///
 /// ```
 fn main() {
     let path = Path::new(&env::var("OUT_DIR").unwrap()).join("codegen.rs");
