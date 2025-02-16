@@ -1,11 +1,13 @@
+//! IO for default format.
 use nom::{
     error::{Error, ParseError},
     {Finish, IResult},
 };
-use rapimt_core::prelude::{Action, ActionEncoder, PredicateEngine, Rule, Single};
+use rapimt_core::prelude::{Action, ActionEncoder, PredicateEngine, Single};
+use rapimt_im::prelude::Rule;
 
-pub mod parser;
 pub mod loader;
+pub mod parser;
 
 /// Load instances from default format.
 pub trait InstanceLoader<'a, AE: ActionEncoder<'a>> {
@@ -61,4 +63,3 @@ where
         }
     }
 }
-

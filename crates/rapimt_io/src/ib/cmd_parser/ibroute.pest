@@ -1,0 +1,27 @@
+// ----- Common Definitions -----
+heading_comment = @{ "#" ~ (!"\n" ~ ASCII)* }
+WHITESPACE      = _{ " " | "\t" | NEWLINE }
+
+parenthesed0 = { (!("(" | ")") ~ ANY)+ }
+parenthesed  = { "(" ~ (parenthesed0 | parenthesed)+ ~ ")" }
+bracketed0   = { (!("[" | "]") ~ ANY)+ }
+bracketed    = { "[" ~ (bracketed0 | bracketed)+ ~ "]" }
+quote0       = { (!"\"" ~ ANY)+ }
+quoted       = { "\"" ~ quote0 ~ "\"" }
+
+hex_bare_ident  = ${ ASCII_HEX_DIGIT+ }
+hex_ident       = ${ "0x" ~ hex_bare_ident }
+digit_ident     = ${ ASCII_DIGIT+ }
+node_name_ident = ${ ("S" | "H") ~ "-" ~ ASCII_HEX_DIGIT+ }
+// ----- Common Definitions -----
+
+// ----- FIB File -----
+fib_file_heading_unicast = {
+    "Unicast lids" ~ bracketed ~ "of switch Lid" ~ digit_ident ~ "guid" ~ hex_ident ~ parenthesed ~ ":"
+}
+fib_header               = { "Lid" ~ "Out" ~ "Destination" ~ "Port" ~ "Info" }
+fib_rule                 = { hex_ident ~ digit_ident ~ (":" ~ parenthesed)? }
+fib_conclusion           = { digit_ident ~ "valid lids dumped" }
+
+fib_file = { SOI ~ fib_file_heading_unicast ~ fib_header ~ fib_rule+ ~ fib_conclusion ~ EOI}
+// ----- FIB File -----

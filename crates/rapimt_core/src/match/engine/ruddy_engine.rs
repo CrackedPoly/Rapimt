@@ -11,10 +11,10 @@ use funty::Unsigned;
 use ruddy::{Bdd, BddIO, BddManager, BddOp, PrintSet, Ruddy};
 
 use crate::r#match::{
-    family::constant,
-    raw_match::{FieldMatch, Match},
-    predicate::{Predicate, PredicateInner},
     engine::{MatchEncoder, PredicateEngine},
+    family::constant,
+    predicate::{Predicate, PredicateInner},
+    raw_match::{FieldMatch, Match},
 };
 
 /// A predicate engine based on the [Ruddy](https://github.com/CrackedPoly/RuDDy) library.
@@ -36,6 +36,9 @@ pub struct RuddyPredicateEngine {
 
     #[cfg(feature = "tag")]
     pub tag_varset_pair: (Bdd, Bdd),
+
+    #[cfg(feature = "lid")]
+    pub lid_varset_pair: (Bdd, Bdd),
 }
 
 impl RuddyPredicateEngine {
@@ -161,6 +164,26 @@ impl RuddyPredicateEngine {
             (tag_varset, not_tag_varset)
         };
 
+        #[cfg(feature = "lid")]
+        let (lid_varset, not_lid_varset) = {
+            let (from, to) = constant::FIELD_MAP.get("lid").unwrap();
+            let mut lid_varset = var_pair[0].0;
+            let mut not_lid_varset = var_pair[0].0;
+            let mut tmp: Bdd;
+            for i in 0..constant::MAX_POS {
+                if i >= *from && i < *to {
+                    tmp = manager.and(lid_varset, var_pair[i + 1].0);
+                    manager.deref_bdd(lid_varset);
+                    lid_varset = manager.ref_bdd(tmp);
+                } else {
+                    tmp = manager.and(not_lid_varset, var_pair[i + 1].0);
+                    manager.deref_bdd(not_lid_varset);
+                    not_lid_varset = manager.ref_bdd(tmp);
+                }
+            }
+            (lid_varset, not_lid_varset)
+        };
+
         Self {
             manager: RefCell::new(manager),
             var_pair,
@@ -175,6 +198,8 @@ impl RuddyPredicateEngine {
             sport_varset_pair: (sport_varset, not_sport_varset),
             #[cfg(feature = "tag")]
             tag_varset_pair: (tag_varset, not_tag_varset),
+            #[cfg(feature = "lid")]
+            lid_varset_pair: (lid_varset, not_lid_varset),
         }
     }
 }

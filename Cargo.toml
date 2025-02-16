@@ -1,6 +1,6 @@
 [package]
 name = "rapimt"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,21 +9,29 @@ edition = "2021"
 # opt-level = 3
 overflow-checks = false
 
+[profile.release]
+overflow-checks = false
+
 [workspace]
 members = ["crates/*"]
 
 [workspace.dependencies]
-fxhash = "0.2.1"
-nom = "7"
-indexmap = "2.2.5"
-bitvec = "1"
-num_enum = "0.7.3"
+bitvec = { version = "1" }
+fxhash = { version = "0.2.1" }
+funty = { version = "2.0.0" }
+indexmap = { version = "2.2.5" }
+log = { version = "0.4.25" }
+env_logger = { version = "0.11.6" }
+nom = { version = "8" }
+num_enum = { version = "0.7.3" }
 RuDDy = { git = "https://github.com/CrackedPoly/RuDDy.git", features = [
   "default",
 ] }
+serde = { version = "1.0", features = ["derive", "rc"] }
+snafu = { version = "0.8.5" }
 
 [dependencies]
-rapimt_internal = { path = "crates/rapimt_internal" }
+rapimt_internal = { path = "crates/rapimt_internal" , version = "0.2.2" }
 document-features = "0.2"
 
 [features]
@@ -41,10 +49,8 @@ dport = ["rapimt_internal/dport"]
 ## Support encoding 16-bit source port numbers
 sport = ["rapimt_internal/sport"]
 
-## Support encoding 8-bit VLAN tags
+## Support encoding 16-bit VLAN tags
 tag = ["rapimt_internal/tag"]
 
-[[bin]]
-doc = false
-name = "rimt"
-path = "crates/rapimt_cli/src/bin/rimt.rs"
+## Support encoding 16-bit InfiniBand lid
+lid = ["rapimt_internal/lid"]

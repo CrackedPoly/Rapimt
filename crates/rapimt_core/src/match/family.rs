@@ -29,7 +29,7 @@ pub struct MatchFamily;
 
 /// (codegen) Decide field names and bit positions.
 pub mod constant {
-    use super::{MatchFamily, FamilyDecl, FieldDeclaration};
+    use super::{FamilyDecl, FieldDeclaration, MatchFamily};
     use bitvec::order::Lsb0;
 
     include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
@@ -55,4 +55,3 @@ pub mod constant {
         }
     }
 }
-

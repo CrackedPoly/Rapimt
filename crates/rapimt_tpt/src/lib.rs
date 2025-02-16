@@ -7,8 +7,8 @@ pub mod segment;
 pub use crate::patricia::GraphvizDebug;
 
 #[allow(missing_docs)]
+#[doc(hidden)]
 pub mod prelude {
-    #[doc(hidden)]
     pub use crate::{
         patricia::{SetHandle, TernaryPatriciaTree},
         segment::{Segmentized, Segmentizer},

@@ -1,7 +1,22 @@
 [package]
 name = "rapimt_ver"
-version = "0.1.0"
+version = "0.2.2"
 edition = "2021"
 
 [dependencies]
-rapimt_core = { path = "../rapimt_core" }
+rapimt_core = { path = "../rapimt_core", features = ["lid"] , version = "0.2.2" }
+rapimt_im = { path = "../rapimt_im" , version = "0.2.2" }
+rapimt_io = { path = "../rapimt_io" , version = "0.2.2" }
+serde = { workspace = true }
+snafu = { workspace = true }
+fxhash = { workspace = true }
+num_enum = { workspace = true }
+log = { workspace = true }
+regex = { version = "1.11.1" }
+petgraph = { version = "0.7.1" }
+rayon = { version = "1.10.0" }
+typetag = "0.2"
+pest = "2"
+pest_derive = "2"
+
+[dev-dependencies]

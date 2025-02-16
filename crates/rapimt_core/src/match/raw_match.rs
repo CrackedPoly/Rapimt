@@ -23,7 +23,7 @@ pub struct FieldMatch<'a, U: Unsigned> {
     pub cond: Match<U>,
 }
 
-/// Ternary bit string representing an entire header match. 
+/// Ternary bit string representing an entire header match.
 ///
 /// Bits are stored in little-endian. For example, fields declared as "tag: 0-16, dip: 16-32"
 /// encodes dip=192.168.0.0/24, tag=2 as `0100000000000000*******000000000001010100000011`.

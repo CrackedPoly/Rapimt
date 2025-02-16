@@ -3,37 +3,49 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-/// Generate packet field declarations for the match family.
+/// Generate static packet field declarations for the match family.
 /// An example of generated code:
 /// ```rust
 /// pub static FIELD_MAP: phf::OrderedMap<&'static str, (usize, usize)> = ::phf::OrderedMap {
 ///     key: 12913932095322966823,
 ///     disps: &[
-///         (1, 0),
+///         (0, 0),
+///         (0, 3),
 ///     ],
 ///     idxs: &[
-///         3,
-///         4,
 ///         0,
+///         4,
+///         5,
 ///         2,
 ///         1,
+///         3,
 ///     ],
 ///     entries: &[
-///         ("tag", (0usize, 16usize)),
-///         ("sport", (16usize, 32usize)),
-///         ("dport", (32usize, 48usize)),
-///         ("sip", (48usize, 80usize)),
-///         ("dip", (80usize, 112usize)),
+///         ("lid", (0usize, 16usize)),
+///         ("tag", (16usize, 32usize)),
+///         ("sport", (32usize, 48usize)),
+///         ("dport", (48usize, 64usize)),
+///         ("sip", (64usize, 96usize)),
+///         ("dip", (96usize, 128usize)),
 ///     ],
 /// };
 ///
-/// pub const MAX_POS: usize = 112usize;
+/// pub const MAX_POS: usize = 128usize;
+///
 /// ```
 fn main() {
     let path = Path::new(&env::var("OUT_DIR").unwrap()).join("codegen.rs");
     let mut file = BufWriter::new(File::create(&path).unwrap());
     let mut m: phf_codegen::OrderedMap<&'static str> = phf_codegen::OrderedMap::new();
     let counter: usize = 0;
+
+    #[cfg(feature = "lid")]
+    let m = m.entry(
+        "lid",
+        format!("({}usize, {}usize)", counter, counter + 16).as_str(),
+    );
+    #[cfg(feature = "lid")]
+    let counter = counter + 16;
 
     #[cfg(feature = "tag")]
     let m = m.entry(

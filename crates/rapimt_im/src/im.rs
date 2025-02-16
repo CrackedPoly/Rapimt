@@ -14,8 +14,6 @@ use rapimt_core::prelude::{
 pub trait InverseModelMonoid<A: Action<T>, P: PredicateInner, T: Dimension>:
     Default + Clone + IntoIterator<Item = (A, Predicate<P>)> + FromIterator<(A, Predicate<P>)>
 {
-    fn overwrite(&self, rhs: &Self) -> Self;
-
     fn overwrite_(&mut self, rhs: Self);
 
     fn default() -> Self;
@@ -37,34 +35,6 @@ where
     T: Dimension,
     S: BuildHasher + Clone + Default,
 {
-    fn overwrite(&self, rhs: &Self) -> Self {
-        if self.is_empty() {
-            return rhs.clone();
-        } else if rhs.is_empty() {
-            return self.clone();
-        }
-        let capacity = max(self.len(), rhs.len());
-        let mut result: HashMap<A, Predicate<P>, S> =
-            HashMap::with_capacity_and_hasher(capacity, S::default());
-        for ex in self.iter() {
-            let mut px = ex.1.clone();
-            for ey in rhs.iter() {
-                let mut py = ey.1.clone();
-                let pxy = &px & &py;
-                if !pxy.is_empty() {
-                    let axy = ex.0.overwrite(ey.0);
-                    result
-                        .entry(axy)
-                        .and_modify(|mut p0| p0 |= &pxy)
-                        .or_insert(pxy.clone());
-                    px -= &pxy;
-                    py -= &pxy;
-                }
-            }
-        }
-        result
-    }
-
     fn overwrite_(&mut self, rhs: Self) {
         if self.is_empty() {
             *self = rhs;
@@ -81,7 +51,7 @@ where
                 let mut py = ey.1.clone();
                 let pxy = &px & &py;
                 if !pxy.is_empty() {
-                    let axy = ex.0.overwrite(ey.0);
+                    let axy = ex.0.overwritten(ey.0);
                     result
                         .entry(axy)
                         .and_modify(|mut p0| p0 |= &pxy)
@@ -116,6 +86,48 @@ where
 
     fn len(&self) -> usize {
         self.len()
+    }
+}
+
+/// This implementation is only used for IB networks, where all IMs are of the same size (#lid).
+impl<A, P, T> InverseModelMonoid<A, P, T> for Vec<(A, Predicate<P>)>
+where
+    A: Action<T>,
+    P: PredicateInner,
+    T: Dimension,
+{
+    fn overwrite_(&mut self, rhs: Self) {
+        if self.is_empty() {
+            *self = rhs;
+            return;
+        } else if rhs.is_empty() {
+            return;
+        }
+        self.iter_mut().zip(rhs.iter()).for_each(|(ex, ey)| {
+            ex.0.overwritten_(ey.0);
+        });
+    }
+
+    fn default() -> Self {
+        vec![]
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a Predicate<P>)>
+    where
+        A: 'a,
+        P: 'a,
+    {
+        <Vec<(A, Predicate<P>)> as Deref>::deref(self)
+            .iter()
+            .map(|(a, p)| (a, p))
     }
 }
 
