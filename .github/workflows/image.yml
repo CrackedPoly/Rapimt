@@ -122,10 +122,8 @@ jobs:
             ${{ env.DOCKERHUB_REPO }}
             ${{ env.GHCR_REPO }}
           tags: |
-            type=schedule,pattern={{date 'YYYYMMDD'}}
             type=semver,pattern={{version}}
-            type=sha
-            type=ref,event=branch
+            type=schedule,pattern={{date 'YYYYMMDD'}}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
