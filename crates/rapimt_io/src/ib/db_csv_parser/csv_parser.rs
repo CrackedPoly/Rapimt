@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn test_read_nodes_from_csv() {
-        match load_node_commons("examples/ibdiagnet2/nodes.csv", |_x| 0) {
+        match load_node_commons("examples/ibdiagnet2/nodes.test", |_x| 0) {
             Ok(nodes) => {
                 println!("{}", nodes.len());
             }
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn test_read_links_from_csv() {
-        match load_links("examples/ibdiagnet2/links.csv") {
+        match load_links("examples/ibdiagnet2/links.test") {
             Ok(links) => {
                 println!("{}", links.len());
             }
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_read_ports_from_csv() {
-        match load_ports("examples/ibdiagnet2/ports.csv") {
+        match load_ports("examples/ibdiagnet2/ports.test") {
             Ok(ports) => {
                 println!("{}", ports.len());
             }
