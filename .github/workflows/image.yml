@@ -3,7 +3,9 @@ name: build flash image and push to ghcr and dockerhub
 on:
   push:
     branches:
-      - ib
+      - main
+    tags:
+      - '*'
 
 env:
   DOCKERHUB_REPO: crackedpolya/flash
