@@ -1,0 +1,40 @@
+FOR      = _{ ("for" | "FOR" | "For") }
+FROM     = _{ ("from" | "FROM" | "From") }
+GOES     = _{ ("goes" | "GOES" | "Goes") }
+MATCHES  =  { ("matches" | "MATCHES" | "Matches") }
+CONTAINS =  { ("contains" | "CONTAINS" | "Contains") }
+AND      = _{ "AND" }
+OR       = _{ "OR" }
+NOT      = _{ "NOT" }
+COVER    = _{ "COVER" }
+
+REGEX       = _{ (ASCII_ALPHANUMERIC | "^" | "$" | "-" | "+" | "*" | "\\" | "|" | "?" | "." | "(" | ")")+ }
+INLINESPACE = _{ (" " | "\t")+ }
+WHITESPACE  = _{ " " | "\t" | NEWLINE }
+
+reqs = { req* }
+req  = { FOR ~ headerspace ~ FROM ~ sources ~ GOES ~ path_expr }
+
+headerspace =  { field_value ~ ("," ~ field_value)* }
+field_value =  { field ~ "=" ~ value }
+field       =  { ASCII_ALPHA_LOWER+ }
+value       = @{ (hex_value | ip_value) }
+hex_value   = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+ip_value    = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT{, 3} ~ "." ~ ASCII_DIGIT{, 3} ~ "." ~ ASCII_DIGIT{, 3} ~ "/" ~ ASCII_DIGIT{, 2})? }
+
+sources =  { "[" ~ node_id ~ ("," ~ node_id)* ~ "]" }
+node_id = @{ ASCII_ALPHANUMERIC+ }
+
+path_expr =  { atom ~ (bin_op ~ atom)* }
+atom      = _{ unary_op? ~ primary }
+primary   = _{ hops | "(" ~ path_expr ~ ")" }
+hops      = _{ hop+ }
+hop       = _{ id | cond | path_cons }
+id        = _{ "<" ~ node_id ~ ">" }
+cond      = ${ "<" ~ label ~ INLINESPACE* ~ op ~ INLINESPACE* ~ val ~ ">" }
+label     = ${ ASCII_ALPHANUMERIC+ }
+op        = _{ "=" | CONTAINS | MATCHES }
+val       =  { REGEX }
+path_cons = ${ ("." | "*" | "^" | "$") }
+bin_op    =  { AND | OR }
+unary_op  =  { NOT | COVER }

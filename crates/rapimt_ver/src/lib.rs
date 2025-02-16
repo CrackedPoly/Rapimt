@@ -2,50 +2,118 @@
 
 pub mod error;
 pub mod ib;
+pub mod plugin;
 
-use rapimt_core::prelude::{Predicate, PredicateInner};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
-pub trait Invariant {
-    type P: PredicateInner;
+use fxhash::FxHashMap;
+use petgraph::{
+    acyclic::Acyclic,
+    algo::all_simple_paths,
+    graph::{DiGraph, NodeIndex},
+};
+use plugin::AnyGraphPlugin;
+use rapimt_io::ib::loader::Lid;
 
-    fn name(&self) -> &str;
-    fn header_space(&self) -> Predicate<Self::P>;
+pub type AnyReport = Box<dyn ReportLike>;
+
+/// A forwarding graph can be registered with multiple plugins to verify different requirements.
+///
+/// An report is an execution result of a plugin. [CachedFwdGraph] cache reports of first executions
+/// of a plugins.
+pub struct CachedFwdGraph<NK, Node, Edge> {
+    graph: Acyclic<DiGraph<Node, Edge>>,
+    #[allow(unused)]
+    loop_exists: bool,
+    /// map from guid to node index
+    node_map: FxHashMap<NK, NodeIndex>,
+    /// Cached result of all verification plugins. It is required to NOT have two plugins with the
+    /// same name.
+    plugin: FxHashMap<Arc<str>, AnyGraphPlugin<NK, Node, Edge>>,
 }
 
-pub enum Requirement<P: PredicateInner> {
-    Reachability(Reachability<P>),
-    MinHopCount(MinHopCount<P>),
-}
+#[allow(unused)]
+impl<NK, Node, Edge> CachedFwdGraph<NK, Node, Edge> {
+    fn add_plugin(&mut self, plugin: AnyGraphPlugin<NK, Node, Edge>) {
+        let name = plugin.get_name();
+        self.plugin.insert(name.clone(), plugin);
+    }
 
-impl<P: PredicateInner> Invariant for Requirement<P> {
-    type P = P;
+    fn del_plugin(&mut self, name: impl AsRef<str>) {
+        self.plugin.remove(name.as_ref());
+    }
 
-    fn name(&self) -> &str {
-        match self {
-            Requirement::Reachability(r) => r.name.as_str(),
-            Requirement::MinHopCount(m) => m.name.as_str(),
+    fn has_plugin(&self, name: impl AsRef<str>) -> bool {
+        self.plugin.contains_key(name.as_ref())
+    }
+
+    fn get_report(&mut self, name: &Arc<str>) -> Option<AnyReport> {
+        if let Some(plugin) = self.plugin.get(name) {
+            Some(plugin.report())
+        } else {
+            None
         }
     }
-    fn header_space(&self) -> Predicate<P> {
-        match self {
-            Requirement::Reachability(r) => r.header_space.clone(),
-            Requirement::MinHopCount(m) => m.header_space.clone(),
+
+    /// Conduct an all-simple-path verification with provided plugins.
+    fn execute(&mut self) {
+        let dsts: Vec<_> = self
+            .node_indices()
+            .filter(|i| self.neighbors(*i).next().is_none())
+            .collect();
+        for dst in dsts {
+            for src in self.node_indices() {
+                if src == dst {
+                    continue;
+                }
+                for path in all_simple_paths::<Vec<_>, _>(self.graph.inner(), src, dst, 0, None) {
+                    for plugin in self.plugin.values_mut() {
+                        plugin.recognize_path(self.graph.inner(), &path);
+                    }
+                }
+            }
         }
     }
 }
 
-pub struct Reachability<P: PredicateInner> {
-    pub name: String,
-    pub header_space: Predicate<P>,
+impl<NK, Node, Edge> Deref for CachedFwdGraph<NK, Node, Edge> {
+    type Target = Acyclic<DiGraph<Node, Edge>>;
+    fn deref(&self) -> &Self::Target {
+        &self.graph
+    }
 }
 
-pub struct MinHopCount<P: PredicateInner> {
-    pub name: String,
-    pub header_space: Predicate<P>,
+impl<NK, Node, Edge> DerefMut for CachedFwdGraph<NK, Node, Edge> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.graph
+    }
+}
+
+unsafe impl<NK, Node, Edge> Sync for CachedFwdGraph<NK, Node, Edge> {}
+
+/// A plugin report is an execution result of a plugin.
+#[typetag::serde(tag = "type")]
+pub trait ReportLike: Send + Sync + std::fmt::Debug {
+    fn should_report(&self) -> bool;
+}
+
+/// RESTful API for querying a snapshot.
+pub trait SnapshotQuery {
+    type NK;
+    type Edge;
+
+    /// List all alerts
+    fn list_alert(&self) -> Vec<AnyReport>;
+    /// Get single EC
+    fn query_dag(&self, lid: Lid) -> Option<Vec<Self::Edge>>;
+    /// Get a DAG from some source of an EC
+    fn query_dag_from(&self, lid: Lid, src: Self::NK) -> Option<Vec<Self::Edge>>;
+    /// Get the number of ECs
+    fn query_num_ec(&self) -> usize;
 }
 
 #[allow(missing_docs)]
-pub mod prelude {
-    #[doc(hidden)]
-    pub use crate::Invariant;
-}
+pub mod prelude {}

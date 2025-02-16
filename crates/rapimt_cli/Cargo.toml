@@ -1,12 +1,12 @@
 [package]
 name = "rapimt_cli"
-version = "0.1.0"
+version = "0.2.2"
 edition = "2021"
 
 [dependencies]
-rapimt_core = { path = "../rapimt_core", features = ["lid"] }
-rapimt_io = { path = "../rapimt_io" }
-rapimt_ver = { path = "../rapimt_ver" }
+rapimt_core = { path = "../rapimt_core", features = ["lid"] , version = "0.2.2" }
+rapimt_io = { path = "../rapimt_io" , version = "0.2.2" }
+rapimt_ver = { path = "../rapimt_ver" , version = "0.2.2" }
 serde = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }

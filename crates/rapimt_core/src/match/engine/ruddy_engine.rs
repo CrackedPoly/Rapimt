@@ -11,10 +11,10 @@ use funty::Unsigned;
 use ruddy::{Bdd, BddIO, BddManager, BddOp, PrintSet, Ruddy};
 
 use crate::r#match::{
-    family::constant,
-    raw_match::{FieldMatch, Match},
-    predicate::{Predicate, PredicateInner},
     engine::{MatchEncoder, PredicateEngine},
+    family::constant,
+    predicate::{Predicate, PredicateInner},
+    raw_match::{FieldMatch, Match},
 };
 
 /// A predicate engine based on the [Ruddy](https://github.com/CrackedPoly/RuDDy) library.

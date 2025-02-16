@@ -1,4 +1,6 @@
 //! Action encoding and decoding, and match encoding.
+#![feature(vec_into_raw_parts)]
+#![feature(hasher_prefixfree_extras)]
 pub mod action;
 pub mod r#match;
 
@@ -7,16 +9,18 @@ pub mod r#match;
 pub mod prelude {
     pub use crate::{
         action::{
-            fwd::FwdActionType,
-            acl::AclActionType,
-            Action, ActionEncoder, UncodedAction, CodedAction, Dimension, Multiple, Single, Actions
+            acl::AclActionType, fwd::FwdActionType, Action, ActionEncoder, Actions, CodedAction,
+            Dimension, Multiple, Single, UncodedAction,
         },
         r#match::{
+            engine::{
+                MatchEncoder, OxiddPredicate, OxiddPredicateEngine, PredicateEngine,
+                RuddyPredicate, RuddyPredicateEngine,
+            },
             family::{constant, MatchFamily},
-            raw_match::macros::*,
             predicate::{Predicate, PredicateInner},
+            raw_match::macros::*,
             raw_match::{FieldMatch, MaskedValue, Match},
-            engine::{MatchEncoder, PredicateEngine, RuddyPredicateEngine, RuddyPredicate, OxiddPredicateEngine, OxiddPredicate},
         },
     };
 }

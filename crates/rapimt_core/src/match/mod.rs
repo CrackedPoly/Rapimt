@@ -35,5 +35,5 @@
 
 pub mod engine;
 pub mod family;
-pub mod raw_match;
 pub mod predicate;
+pub mod raw_match;

@@ -1,13 +1,13 @@
 [package]
 name = "rapimt_io"
-version = "0.1.0"
+version = "0.2.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rapimt_core = { path = "../rapimt_core" }
-rapimt_im = { path = "../rapimt_im" }
+rapimt_core = { path = "../rapimt_core" , version = "0.2.2" }
+rapimt_im = { path = "../rapimt_im" , version = "0.2.2" }
 fxhash = { workspace = true }
 nom = { workspace = true }
 indexmap = { workspace = true }
@@ -16,8 +16,8 @@ serde = { workspace = true }
 snafu = { workspace = true }
 log = { workspace = true }
 funty = "2.0.0"
-pest = "2.6"
-pest_derive = "2.6"
+pest = "2"
+pest_derive = "2"
 derivative = "2.2.0"
 csv = "1.3.1"
 hex = { version = "0.4.3", features = ["serde"] }

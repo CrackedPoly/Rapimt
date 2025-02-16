@@ -8,7 +8,10 @@ use funty::Unsigned;
 use fxhash::{FxBuildHasher, FxHashMap};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use rapimt_core::{
-    action::{ib::IbActionType, Action, ActionEncoder, Multiple, Single, UncodedAction},
+    action::{
+        ib::IbActionType, seq_action::SeqAction, Action, ActionEncoder, Multiple, Single,
+        UncodedAction,
+    },
     r#match::{
         engine::MatchEncoder,
         predicate::Predicate,
@@ -233,14 +236,14 @@ impl<'a> Action<Single> for IbAction<'a> {
         Self::NonOverwrite
     }
 
-    fn overwrite(&self, rhs: &Self) -> Self {
+    fn overwritten(&self, rhs: &Self) -> Self {
         match rhs {
             IbAction::NonOverwrite => *self,
             _ => *rhs,
         }
     }
 
-    fn overwrite_(&mut self, rhs: &Self) {
+    fn overwritten_(&mut self, rhs: &Self) {
         match rhs {
             IbAction::NonOverwrite => {}
             _ => *self = *rhs,
@@ -503,13 +506,13 @@ where
 
     type OT = Multiple;
 
-    type OA = Arc<Vec<FusedIdx>>;
+    type OA = Arc<SeqAction<FusedIdx>>;
 
     type R = Rule<ME::P, FusedIdx>;
 
     type RR = LftEntry;
 
-    type M = Vec<(Arc<Vec<FusedIdx>>, Predicate<ME::P>)>;
+    type M = Vec<(Arc<SeqAction<FusedIdx>>, Predicate<ME::P>)>;
 
     type Mon = IbRuleMonitor<'p, FusedIdx, ME>;
 

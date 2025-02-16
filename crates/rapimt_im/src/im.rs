@@ -51,7 +51,7 @@ where
                 let mut py = ey.1.clone();
                 let pxy = &px & &py;
                 if !pxy.is_empty() {
-                    let axy = ex.0.overwrite(ey.0);
+                    let axy = ex.0.overwritten(ey.0);
                     result
                         .entry(axy)
                         .and_modify(|mut p0| p0 |= &pxy)
@@ -104,7 +104,7 @@ where
             return;
         }
         self.iter_mut().zip(rhs.iter()).for_each(|(ex, ey)| {
-            ex.0.overwrite_(ey.0);
+            ex.0.overwritten_(ey.0);
         });
     }
 

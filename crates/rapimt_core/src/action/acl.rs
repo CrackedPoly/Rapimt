@@ -1,5 +1,5 @@
-use num_enum::IntoPrimitive;
 use super::ActionType;
+use num_enum::IntoPrimitive;
 
 #[derive(IntoPrimitive)]
 #[repr(u8)]

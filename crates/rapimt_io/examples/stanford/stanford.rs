@@ -1,7 +1,10 @@
 use std::time::SystemTime;
 
 use fxhash::FxHashMap;
-use rapimt_core::prelude::{OxiddPredicateEngine, RuddyPredicateEngine};
+use rapimt_core::{
+    action::seq_action::SeqAction,
+    prelude::{OxiddPredicateEngine, RuddyPredicateEngine},
+};
 use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore};
 use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
 
@@ -37,7 +40,7 @@ fn main() {
 
     // Global inverse model
     // We choose FxHashMap to store the network-wide inverse model and Vec to store the actions.
-    let mut im: InverseModel<_, _, _, FxHashMap<Vec<_>, _>> = InverseModel::default();
+    let mut im: InverseModel<_, _, _, FxHashMap<SeqAction<_>, _>> = InverseModel::default();
     // Incremental updates
     let mut im_updates = FxHashMap::default();
 
@@ -53,7 +56,7 @@ fn main() {
         //   2. we use usize to represent an action in the device, alternatively, we can use
         //      TypedAction here.
         // let im_update: InverseModel<_, _, _, FxHashMap<Vec<TypedAction>, _>> =
-        let im_update: InverseModel<_, _, _, FxHashMap<Vec<usize>, _>> =
+        let im_update: InverseModel<_, _, _, FxHashMap<SeqAction<usize>, _>> =
             monitors.get_mut(d).unwrap().insert(fibs);
         mr1_timer += _timer.elapsed().unwrap().as_nanos();
         im_updates.insert(d, im_update);

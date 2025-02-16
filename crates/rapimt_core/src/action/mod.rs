@@ -72,12 +72,12 @@ impl Dimension for Single {}
 pub trait Action<T: Dimension>: Eq + Hash + Clone + Debug {
     /// What single form of action it contains. For structs that implements [`Action<Single>`], `S` must
     /// be itself, while for [`Action<Multiple>`] structs, it should define one.
-    type S: Action<Single>;
+    type S: Action<Single> + Copy;
 
     fn default_action() -> Self;
     fn no_overwrite() -> Self;
-    fn overwrite(&self, rhs: &Self) -> Self;
-    fn overwrite_(&mut self, rhs: &Self);
+    fn overwritten(&self, rhs: &Self) -> Self;
+    fn overwritten_(&mut self, rhs: &Self);
     fn from_single(single: Self::S) -> Self;
 }
 
@@ -131,7 +131,7 @@ macro_rules! impl_coded_action_for_ints {
                     0 as Self
                 }
                 #[inline]
-                fn overwrite(&self, rhs: &Self) -> Self {
+                fn overwritten(&self, rhs: &Self) -> Self {
                     if *rhs == 0 {
                         *self
                     } else {
@@ -139,7 +139,7 @@ macro_rules! impl_coded_action_for_ints {
                     }
                 }
                 #[inline]
-                fn overwrite_(&mut self, rhs: &Self) {
+                fn overwritten_(&mut self, rhs: &Self) {
                     if *rhs != 0 {
                         *self = *rhs;
                     }
@@ -160,8 +160,7 @@ impl_coded_action_for_ints!(usize, u128, u64, u32, u16, u8, isize, i128, i64, i3
 ///
 /// This trait implementors should have all information about this device's topology (name, ports,
 /// port mode, neighbors). The interface may be enriched.
-pub trait ActionEncoder<'a>
-{
+pub trait ActionEncoder<'a> {
     type A: CodedAction;
     type UA: UncodedAction<'a>;
     /// lookup key
@@ -176,10 +175,10 @@ pub trait ActionEncoder<'a>
 
 /// Container of multiple actions.
 ///
-/// Represent a sequence of actions that exist in the system.
+/// Represent a sequence of actions.
 pub trait Actions: Action<Multiple> + Clone + Hash + Eq {
     // Required methods
-    fn len(&self) -> usize;
+    fn ndim(&self) -> usize;
     fn diff(&self, rhs: &Self) -> usize;
     fn resize_(&mut self, to: usize, offset: usize);
     fn index(&self, index: usize) -> &Self::S;
@@ -187,7 +186,7 @@ pub trait Actions: Action<Multiple> + Clone + Hash + Eq {
 
     // Provided methods
     fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.ndim() == 0
     }
 }
 
@@ -202,12 +201,12 @@ impl<T: Dimension, A: Action<T>> Action<T> for Rc<A> {
         Rc::new(A::no_overwrite())
     }
 
-    fn overwrite(&self, rhs: &Self) -> Self {
-        Rc::new(self.as_ref().overwrite(rhs.as_ref()))
+    fn overwritten(&self, rhs: &Self) -> Self {
+        Rc::new(self.as_ref().overwritten(rhs.as_ref()))
     }
 
-    fn overwrite_(&mut self, rhs: &Self) {
-        Rc::make_mut(self).overwrite_(rhs.as_ref());
+    fn overwritten_(&mut self, rhs: &Self) {
+        Rc::make_mut(self).overwritten_(rhs.as_ref());
     }
 
     fn from_single(single: Self::S) -> Self {
@@ -216,8 +215,8 @@ impl<T: Dimension, A: Action<T>> Action<T> for Rc<A> {
 }
 
 impl<A: Actions> Actions for Rc<A> {
-    fn len(&self) -> usize {
-        self.as_ref().len()
+    fn ndim(&self) -> usize {
+        self.as_ref().ndim()
     }
     fn diff(&self, rhs: &Self) -> usize {
         self.as_ref().diff(rhs.as_ref())
@@ -244,12 +243,12 @@ impl<A: Actions> Action<Multiple> for Arc<A> {
         Arc::new(A::no_overwrite())
     }
 
-    fn overwrite(&self, rhs: &Self) -> Self {
-        Arc::new(self.as_ref().overwrite(rhs.as_ref()))
+    fn overwritten(&self, rhs: &Self) -> Self {
+        Arc::new(self.as_ref().overwritten(rhs.as_ref()))
     }
 
-    fn overwrite_(&mut self, rhs: &Self) {
-        Arc::make_mut(self).overwrite_(rhs.as_ref());
+    fn overwritten_(&mut self, rhs: &Self) {
+        Arc::make_mut(self).overwritten_(rhs.as_ref());
     }
 
     fn from_single(single: Self::S) -> Self {
@@ -258,8 +257,8 @@ impl<A: Actions> Action<Multiple> for Arc<A> {
 }
 
 impl<A: Actions> Actions for Arc<A> {
-    fn len(&self) -> usize {
-        self.as_ref().len()
+    fn ndim(&self) -> usize {
+        self.as_ref().ndim()
     }
     fn diff(&self, rhs: &Self) -> usize {
         self.as_ref().diff(rhs.as_ref())
