@@ -6,6 +6,7 @@ use std::{
     ops::{Deref, DerefMut, ShlAssign},
 };
 
+use fxhash::FxBuildHasher;
 use rapimt_core::prelude::{
     Action, Actions, Dimension, Multiple, Predicate, PredicateInner, Single,
 };
@@ -28,7 +29,62 @@ pub trait InverseModelMonoid<A: Action<T>, P: PredicateInner, T: Dimension>:
         P: 'a;
 }
 
-impl<A, P, T, S> InverseModelMonoid<A, P, T> for HashMap<A, Predicate<P>, S>
+/// A wrapper of HashMap that implements InverseModelMonoid.
+pub struct MapMonoid<K, V, S = FxBuildHasher>(HashMap<K, V, S>);
+
+impl<K, V, S> Default for MapMonoid<K, V, S>
+where
+    S: Default,
+{
+    fn default() -> Self {
+        Self(HashMap::with_hasher(S::default()))
+    }
+}
+
+impl<K, V, S> Clone for MapMonoid<K, V, S>
+where
+    K: Clone,
+    V: Clone,
+    S: Clone,
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<K, V, S> FromIterator<(K, V)> for MapMonoid<K, V, S>
+where
+    K: Eq + std::hash::Hash,
+    S: BuildHasher + Default,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<K, V, S> IntoIterator for MapMonoid<K, V, S> {
+    type Item = (K, V);
+    type IntoIter = std::collections::hash_map::IntoIter<K, V>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<K, V, S> Deref for MapMonoid<K, V, S> {
+    type Target = HashMap<K, V, S>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<K, V, S> DerefMut for MapMonoid<K, V, S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<A, P, T, S> InverseModelMonoid<A, P, T> for MapMonoid<A, Predicate<P>, S>
 where
     A: Action<T>,
     P: PredicateInner,
@@ -69,7 +125,7 @@ where
     }
 
     fn default() -> Self {
-        HashMap::with_capacity_and_hasher(0, S::default())
+        MapMonoid(HashMap::with_capacity_and_hasher(0, S::default()))
     }
 
     fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a Predicate<P>)>
@@ -77,20 +133,67 @@ where
         A: 'a,
         P: 'a,
     {
-        self.iter()
+        self.0.iter()
     }
 
     fn is_empty(&self) -> bool {
-        self.is_empty()
+        self.0.is_empty()
     }
 
     fn len(&self) -> usize {
-        self.len()
+        self.0.len()
     }
 }
 
-/// This implementation is only used for IB networks, where all IMs are of the same size (#lid).
-impl<A, P, T> InverseModelMonoid<A, P, T> for Vec<(A, Predicate<P>)>
+/// A wrapper of ordered Vec that implements InverseModelMonoid. This is only used in Infiniband
+/// networks, where lid is a well-formed EC identifier and we do not merge them for performance
+/// sake.
+pub struct IbVecMonoid<T>(Vec<T>);
+
+impl<A, P: PredicateInner> Default for IbVecMonoid<(A, Predicate<P>)> {
+    fn default() -> Self {
+        Self(vec![])
+    }
+}
+
+impl<A, P: PredicateInner> Clone for IbVecMonoid<(A, Predicate<P>)>
+where
+    A: Clone,
+    P: Clone,
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<A, P: PredicateInner> FromIterator<(A, Predicate<P>)> for IbVecMonoid<(A, Predicate<P>)> {
+    fn from_iter<T: IntoIterator<Item = (A, Predicate<P>)>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<A, P: PredicateInner> IntoIterator for IbVecMonoid<(A, Predicate<P>)> {
+    type Item = (A, Predicate<P>);
+    type IntoIter = std::vec::IntoIter<(A, Predicate<P>)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<A, P: PredicateInner> Deref for IbVecMonoid<(A, Predicate<P>)> {
+    type Target = Vec<(A, Predicate<P>)>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<A, P: PredicateInner> DerefMut for IbVecMonoid<(A, Predicate<P>)> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<A, P, T> InverseModelMonoid<A, P, T> for IbVecMonoid<(A, Predicate<P>)>
 where
     A: Action<T>,
     P: PredicateInner,
@@ -109,15 +212,15 @@ where
     }
 
     fn default() -> Self {
-        vec![]
+        IbVecMonoid(vec![])
     }
 
     fn is_empty(&self) -> bool {
-        self.is_empty()
+        self.0.is_empty()
     }
 
     fn len(&self) -> usize {
-        self.len()
+        self.0.len()
     }
 
     fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a Predicate<P>)>
@@ -125,9 +228,7 @@ where
         A: 'a,
         P: 'a,
     {
-        <Vec<(A, Predicate<P>)> as Deref>::deref(self)
-            .iter()
-            .map(|(a, p)| (a, p))
+        self.0.iter().map(|(a, p)| (a, p))
     }
 }
 

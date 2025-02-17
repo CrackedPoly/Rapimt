@@ -6,7 +6,7 @@ use rapimt_core::{
     action::{seq_action::SeqAction, ActionEncoder, Actions, Multiple, UncodedAction},
     r#match::{engine::MatchEncoder, predicate::Predicate},
 };
-use rapimt_im::im::InverseModel;
+use rapimt_im::im::{IbVecMonoid, InverseModel};
 use rapimt_io::ib::{
     db_csv_parser::csv_parser::load_lft,
     loader::{FusedIdx, Guid, IbDataPlane, LftEntry, Lid, LinkSpec, NodeCommon},
@@ -18,7 +18,7 @@ use crate::error::*;
 use crate::{plugin::GraphPluginLike, AnyReport, CachedFwdGraph, SnapshotQuery};
 
 type ActionsRepr = Arc<SeqAction<FusedIdx>>;
-type IM<P> = InverseModel<ActionsRepr, P, Multiple, Vec<(ActionsRepr, Predicate<P>)>>;
+type IM<P> = InverseModel<ActionsRepr, P, Multiple, IbVecMonoid<(ActionsRepr, Predicate<P>)>>;
 type AnyGraphPlugin = Box<dyn GraphPluginLike<Guid, Arc<NodeCommon>, Arc<LinkSpec>>>;
 
 pub struct SnapshotVerifier<'p, ME>

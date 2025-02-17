@@ -10,7 +10,7 @@ use rapimt_core::prelude::{
 };
 use rapimt_tpt::prelude::{Segmentizer, TernaryPatriciaTree};
 
-use crate::im::{InverseModel, InverseModelMonoid};
+use crate::im::{InverseModel, InverseModelMonoid, MapMonoid};
 use crate::{default::rule::Rule, RuleMonitorLike};
 
 type RcRule<P, A> = Rc<Rule<P, A>>;
@@ -163,8 +163,8 @@ where
     tmp_ow: UnsafeCell<FxHashMap<A, Predicate<ME::P>>>,
 }
 
-impl<'p, A, OA, T, ME, RS>
-    RuleMonitorLike<A, OA, T, FxHashMap<OA, Predicate<ME::P>>, ME::P, Rule<ME::P, A>>
+impl<'p, A, OA, T, ME, RS, S>
+    RuleMonitorLike<A, OA, T, MapMonoid<OA, Predicate<ME::P>, S>, ME::P, Rule<ME::P, A>>
     for FastRuleMonitor<'p, A, ME, RS>
 where
     A: Action<Single>,
@@ -172,6 +172,7 @@ where
     T: Dimension,
     ME: MatchEncoder<'p>,
     RS: RuleStore<A, ME::P>,
+    S: std::hash::BuildHasher + std::clone::Clone + std::default::Default,
 {
     fn clear(&mut self) {
         self.store.clear();
@@ -184,7 +185,7 @@ where
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
         deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
-    ) -> InverseModel<OA, ME::P, T, FxHashMap<OA, Predicate<ME::P>>> {
+    ) -> InverseModel<OA, ME::P, T, MapMonoid<OA, Predicate<ME::P>, S>> {
         let firse_time = !self.i_rules.is_empty();
         insertion.into_iter().for_each(|r| {
             let r = Rc::new(r);

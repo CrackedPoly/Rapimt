@@ -20,7 +20,7 @@ use rapimt_core::{
 };
 use rapimt_im::{
     ib::{monitor::IbRuleMonitor, rule::Rule},
-    im::InverseModel,
+    im::{IbVecMonoid, InverseModel},
     RawRuleLike, RuleMonitorLike,
 };
 use serde::Serialize;
@@ -512,7 +512,7 @@ where
 
     type RR = LftEntry;
 
-    type M = Vec<(Arc<SeqAction<FusedIdx>>, Predicate<ME::P>)>;
+    type M = IbVecMonoid<(Arc<SeqAction<FusedIdx>>, Predicate<ME::P>)>;
 
     type Mon = IbRuleMonitor<'p, FusedIdx, ME>;
 

@@ -555,9 +555,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use fxhash::FxHashMap;
     use rapimt_core::{action::seq_action::SeqAction, r#match::engine::RuddyPredicateEngine};
-    use rapimt_im::prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore};
+    use rapimt_im::{
+        im::MapMonoid,
+        prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore},
+    };
 
     use super::*;
 
@@ -745,20 +747,20 @@ mod tests {
 
         // two rules as an incremental update
         // im should have three entries: one default "drop", one 0.0.0.0/1 and one "192.168.1.0/24"
-        let im: InverseModel<_, _, _, FxHashMap<usize, _>> = fib_monitor.insert(fibs.clone());
+        let im: InverseModel<_, _, _, MapMonoid<usize, _>> = fib_monitor.insert(fibs.clone());
         assert_eq!(im.len(), 3);
 
-        RuleMonitorLike::<_, usize, _, _, _, _>::clear(&mut fib_monitor);
-        let im: InverseModel<_, _, _, FxHashMap<usize, _>> = fib_monitor.insert(fibs);
+        RuleMonitorLike::<_, usize, _, MapMonoid<_, _>, _, _>::clear(&mut fib_monitor);
+        let im: InverseModel<_, _, _, MapMonoid<usize, _>> = fib_monitor.insert(fibs);
         assert_eq!(im.len(), 3);
 
-        let im = InverseModel::<_, _, _, FxHashMap<SeqAction<usize>, _>>::from(im);
+        let im = InverseModel::<_, _, _, MapMonoid<SeqAction<usize>, _>>::from(im);
         assert_eq!(im.len(), 3);
 
         // load fib rules and encode action to TypedAction with codex, run the same as above
         let (_, fibs) = FibLoader::<TypedAction>::load(&codex, &engine, fib).unwrap();
         let mut fib_monitor = FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine);
-        let im: InverseModel<_, _, _, FxHashMap<TypedAction, _>> = fib_monitor.insert(fibs);
+        let im: InverseModel<_, _, _, MapMonoid<TypedAction, _>> = fib_monitor.insert(fibs);
         assert_eq!(im.len(), 3);
     }
 }
