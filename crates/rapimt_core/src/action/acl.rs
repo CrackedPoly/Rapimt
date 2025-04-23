@@ -1,7 +1,7 @@
 use super::ActionType;
-use num_enum::IntoPrimitive;
+use num_enum::{FromPrimitive, IntoPrimitive};
 
-#[derive(IntoPrimitive)]
+#[derive(IntoPrimitive, FromPrimitive)]
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum AclActionType {
