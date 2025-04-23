@@ -241,6 +241,9 @@ pub struct InverseModel<
     M: InverseModelMonoid<A, P, T>,
 >(pub M, PhantomData<(A, P, T)>);
 
+pub type MapInverseModel<A, P, T> = InverseModel<A, P, T, MapMonoid<A, Predicate<P>, FxBuildHasher>>;
+pub type VecInverseModel<A, P, T> = InverseModel<A, P, T, IbVecMonoid<(A, Predicate<P>)>>;
+
 impl<A, P, T, M> Default for InverseModel<A, P, T, M>
 where
     A: Action<T>,
