@@ -36,6 +36,15 @@ impl<K, V, S> Default for MapMonoid<K, V, S>
 where
     S: Default,
 {
+    /// Creates a new, empty `MapMonoid` with the default hasher.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::MapMonoid;
+    /// let map: MapMonoid<u32, u32> = MapMonoid::default();
+    /// assert!(map.is_empty());
+    /// ```
     fn default() -> Self {
         Self(HashMap::with_hasher(S::default()))
     }
@@ -47,6 +56,15 @@ where
     V: Clone,
     S: Clone,
 {
+    /// Creates a copy of the monoid wrapper, cloning the underlying collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let original = MapMonoid::<u32, u32>::default();
+    /// let cloned = original.clone();
+    /// assert_eq!(original.len(), cloned.len());
+    /// ```
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
@@ -57,6 +75,16 @@ where
     K: Eq + std::hash::Hash,
     S: BuildHasher + Default,
 {
+    /// Creates a `MapMonoid` from an iterator of key-value pairs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::MapMonoid;
+    /// let pairs = vec![("a", 1), ("b", 2)];
+    /// let monoid: MapMonoid<_, _> = pairs.into_iter().collect();
+    /// assert_eq!(monoid.len(), 2);
+    /// ```
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
     }
@@ -65,6 +93,15 @@ where
 impl<K, V, S> IntoIterator for MapMonoid<K, V, S> {
     type Item = (K, V);
     type IntoIter = std::collections::hash_map::IntoIter<K, V>;
+    /// Consumes the wrapper and returns an iterator over its elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let monoid = MapMonoid::from_iter(vec![(1, Predicate::default()), (2, Predicate::default())]);
+    /// let mut iter = monoid.into_iter();
+    /// assert_eq!(iter.next().is_some(), true);
+    /// ```
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
@@ -73,12 +110,31 @@ impl<K, V, S> IntoIterator for MapMonoid<K, V, S> {
 impl<K, V, S> Deref for MapMonoid<K, V, S> {
     type Target = HashMap<K, V, S>;
 
+    /// Returns a reference to the underlying collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let map_monoid = MapMonoid::<u32, u32>::default();
+    /// let inner: &std::collections::HashMap<u32, u32> = &*map_monoid;
+    /// assert!(inner.is_empty());
+    /// ```
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl<K, V, S> DerefMut for MapMonoid<K, V, S> {
+    /// Returns a mutable reference to the underlying collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut monoid = MapMonoid::default();
+    /// monoid.insert("a", Predicate::default());
+    /// monoid.deref_mut().clear();
+    /// assert!(monoid.is_empty());
+    /// ```
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -91,6 +147,19 @@ where
     T: Dimension,
     S: BuildHasher + Clone + Default,
 {
+    /// Overwrites the current map with the intersection of predicates from another map, combining actions using their `overwritten` method.
+    ///
+    /// For each pair of actions and predicates in `self` and `rhs`, computes the intersection of their predicates. If the intersection is non-empty, the corresponding actions are combined and the result is accumulated. The current map is replaced with the accumulated result, effectively merging overlapping predicates and actions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::{MapMonoid, Predicate};
+    /// let mut m1 = MapMonoid::from_iter([("a", Predicate::from(1..5))]);
+    /// let m2 = MapMonoid::from_iter([("b", Predicate::from(3..7))]);
+    /// m1.overwrite_(m2);
+    /// // m1 now contains the intersection predicate (3..5) with the combined action.
+    /// ```
     fn overwrite_(&mut self, rhs: Self) {
         if self.is_empty() {
             *self = rhs;
@@ -124,10 +193,31 @@ where
         }
     }
 
+    /// Creates an empty `MapMonoid` with the default hasher.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::MapMonoid;
+    /// let map: MapMonoid<u32, u32> = MapMonoid::default();
+    /// assert!(map.is_empty());
+    /// ```
     fn default() -> Self {
         MapMonoid(HashMap::with_capacity_and_hasher(0, S::default()))
     }
 
+    /// Returns an iterator over references to each action and its associated predicate.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut map = MapMonoid::default();
+    /// map.insert(action1, predicate1);
+    /// map.insert(action2, predicate2);
+    /// for (action, predicate) in map.iter() {
+    ///     // Use action and predicate
+    /// }
+    /// ```
     fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a Predicate<P>)>
     where
         A: 'a,
@@ -136,10 +226,26 @@ where
         self.0.iter()
     }
 
+    /// Returns `true` if the collection contains no elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let map: MapMonoid<u32, u32> = MapMonoid::default();
+    /// assert!(map.is_empty());
+    /// ```
     fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Returns the number of elements in the collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let map: MapMonoid<u32, u32> = MapMonoid::default();
+    /// assert_eq!(map.len(), 0);
+    /// ```
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -151,6 +257,14 @@ where
 pub struct IbVecMonoid<T>(Vec<T>);
 
 impl<A, P: PredicateInner> Default for IbVecMonoid<(A, Predicate<P>)> {
+    /// Creates a new `IbVecMonoid` containing an empty vector.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let monoid: IbVecMonoid<(u32, Predicate<u32>)> = IbVecMonoid::default();
+    /// assert!(monoid.is_empty());
+    /// ```
     fn default() -> Self {
         Self(vec![])
     }
@@ -161,12 +275,30 @@ where
     A: Clone,
     P: Clone,
 {
+    /// Creates a copy of the monoid, duplicating its underlying collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let original = MapMonoid::from_iter(vec![(1, Predicate::default())]);
+    /// let copy = original.clone();
+    /// assert_eq!(original.len(), copy.len());
+    /// ```
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
 impl<A, P: PredicateInner> FromIterator<(A, Predicate<P>)> for IbVecMonoid<(A, Predicate<P>)> {
+    /// Creates a new instance by collecting an iterator of `(A, Predicate<P>)` pairs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pairs = vec![(action1, predicate1), (action2, predicate2)];
+    /// let monoid = MapMonoid::from_iter(pairs);
+    /// assert_eq!(monoid.len(), 2);
+    /// ```
     fn from_iter<T: IntoIterator<Item = (A, Predicate<P>)>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
     }
@@ -175,6 +307,15 @@ impl<A, P: PredicateInner> FromIterator<(A, Predicate<P>)> for IbVecMonoid<(A, P
 impl<A, P: PredicateInner> IntoIterator for IbVecMonoid<(A, Predicate<P>)> {
     type Item = (A, Predicate<P>);
     type IntoIter = std::vec::IntoIter<(A, Predicate<P>)>;
+    /// Consumes the wrapper and returns an iterator over its elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let monoid = MapMonoid::from_iter(vec![(1, Predicate::default()), (2, Predicate::default())]);
+    /// let mut iter = monoid.into_iter();
+    /// assert_eq!(iter.next().is_some(), true);
+    /// ```
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
@@ -182,12 +323,30 @@ impl<A, P: PredicateInner> IntoIterator for IbVecMonoid<(A, Predicate<P>)> {
 
 impl<A, P: PredicateInner> Deref for IbVecMonoid<(A, Predicate<P>)> {
     type Target = Vec<(A, Predicate<P>)>;
+    /// Returns a reference to the underlying collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let map_monoid = MapMonoid::<u32, u32>::default();
+    /// let inner: &std::collections::HashMap<u32, u32> = &*map_monoid;
+    /// assert!(inner.is_empty());
+    /// ```
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl<A, P: PredicateInner> DerefMut for IbVecMonoid<(A, Predicate<P>)> {
+    /// Returns a mutable reference to the underlying collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut monoid = MapMonoid::default();
+    /// monoid.deref_mut().insert("a", Predicate::default());
+    /// assert!(monoid.contains_key("a"));
+    /// ```
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -199,6 +358,20 @@ where
     P: PredicateInner,
     T: Dimension,
 {
+    /// Overwrites each action in the vector with the corresponding action from another vector, element-wise.
+    ///
+    /// If either vector is empty, the non-empty vector is retained. Otherwise, actions are overwritten in place for each pair of elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate::{IbVecMonoid, Predicate};
+    ///
+    /// let mut a = IbVecMonoid::from(vec![(Action::new(1), Predicate::new(true))]);
+    /// let b = IbVecMonoid::from(vec![(Action::new(2), Predicate::new(false))]);
+    /// a.overwrite_(b);
+    /// assert_eq!(a[0].0, Action::new(2));
+    /// ```
     fn overwrite_(&mut self, rhs: Self) {
         if self.is_empty() {
             *self = rhs;
@@ -211,18 +384,53 @@ where
         });
     }
 
+    /// Returns an empty `IbVecMonoid`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let monoid: IbVecMonoid<(u32, Predicate<u32>)> = IbVecMonoid::default();
+    /// assert!(monoid.is_empty());
+    /// ```
     fn default() -> Self {
         IbVecMonoid(vec![])
     }
 
+    /// Returns `true` if the collection contains no elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let map: MapMonoid<u32, u32> = MapMonoid::default();
+    /// assert!(map.is_empty());
+    /// ```
     fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Returns the number of elements in the collection.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let map: MapMonoid<u32, u32> = MapMonoid::default();
+    /// assert_eq!(map.len(), 0);
+    /// ```
     fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns an iterator over references to each action and its associated predicate in the monoid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut monoid = MapMonoid::default();
+    /// monoid.insert("action1", Predicate::new());
+    /// for (action, predicate) in monoid.iter() {
+    ///     // Use action and predicate
+    /// }
+    /// ```
     fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a Predicate<P>)>
     where
         A: 'a,

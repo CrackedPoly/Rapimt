@@ -719,6 +719,17 @@ mod tests {
     }
 
     #[test]
+    /// Tests the integration of FIB rule loading, action encoding, and rule monitoring using both coded and typed actions.
+    ///
+    /// This test verifies that device and FIB specifications are correctly parsed, actions are properly encoded and decoded,
+    /// and the rule monitor maintains the expected number of entries after insertion and clearing operations. It checks
+    /// consistency for both `usize`-encoded and `TypedAction`-encoded FIB rules.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// test_default_fib_monitor();
+    /// ```
     fn test_default_fib_monitor() {
         let spec = r#"
         name dev0

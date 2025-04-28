@@ -58,8 +58,17 @@ impl<NK, Node, Edge> CachedFwdGraph<NK, Node, Edge> {
         }
     }
 
-    /// Conduct an all-simple-path verification with provided plugins.
-    fn execute(&mut self) {
+    /// Runs all registered plugins on every simple path from each source node to each sink node in the graph.
+    ///
+    /// For each pair of distinct nodes where the destination has no outgoing edges, finds all simple paths between them and invokes each plugin's `recognize_path` method on these paths. This enables comprehensive verification of the graph structure using the installed plugins.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut graph = CachedFwdGraph::new();
+    /// // ... add nodes, edges, and plugins ...
+    /// graph.execute(); // Runs verification plugins on all simple paths
+    /// ```    fn execute(&mut self) {
         let dsts: Vec<_> = self
             .node_indices()
             .filter(|i| self.neighbors(*i).next().is_none())

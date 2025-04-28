@@ -32,6 +32,18 @@ where
     ME: MatchEncoder<'p>,
     S: std::hash::BuildHasher + std::clone::Clone + std::default::Default,
 {
+    /// Resets the rule monitor to its initial state, retaining only the default rule.
+    ///
+    /// Removes all inserted and deleted rules, clears the rule store, and reinserts the default rule.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut monitor = IbRuleMonitor::new(&engine);
+    /// // ... insert or delete rules ...
+    /// monitor.clear();
+    /// assert_eq!(monitor.store.len(), 1);
+    /// ```
     fn clear(&mut self) {
         self.i_rules.clear();
         self.d_rules.clear();
@@ -40,8 +52,19 @@ where
     }
 
     /// Invariant: predicate of any two rules in insertion and deletion respectively should not
-    /// overlap.
-    fn update(
+    /// Updates the rule monitor with new insertions and deletions, producing an inverse model mapping actions to predicates using a map monoid.
+    ///
+    /// Applies the given rule insertions and deletions, maintaining the invariant that predicates do not overlap. Returns an `InverseModel` that associates each action with the combined predicate representing its coverage after the update.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut monitor = IbRuleMonitor::new(&engine);
+    /// let insertions = vec![rule1.clone()];
+    /// let deletions = vec![rule2.clone()];
+    /// let model = monitor.update(insertions, deletions);
+    /// // `model` now reflects the updated action-to-predicate mapping.
+    /// ```    fn update(
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
         deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
@@ -94,8 +117,18 @@ where
     }
 
     /// Invariant: predicate of any two rules in insertion and deletion respectively should not
-    /// overlap.
-    fn update(
+    /// Updates the rule set by applying insertions and deletions, returning an inverse model of actions and predicates.
+    ///
+    /// Applies the given rule insertions and deletions to the internal store, then constructs an `InverseModel` containing all current rules as pairs of actions and predicates, with actions converted to the output type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut monitor = IbRuleMonitor::new(&engine);
+    /// let rule = Rule::new(action, predicate);
+    /// let model = monitor.update([rule.clone()], []);
+    /// assert!(model.into_inner().iter().any(|(oa, _)| *oa == OA::from_single(action)));
+    /// ```    fn update(
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
         deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
