@@ -7,7 +7,7 @@ Inverse Model Transformation in Rust
 
 ## Introduction
 
-Rapimt is a data plane verification framework written in Rust.
+Rapimt is a data plane verification framework[^1] written in Rust.
 
 ## Features
 
@@ -83,10 +83,10 @@ assert_eq!(im.len(), 155)
 
 ## Reference
 
-[^1] S. Chen, J. Luo, D. Guo, K. Gao and Y. R. Yang, "Fast Inverse Model Transformation: Algebraic Framework for Fast Data Plane Verification", in IEEE Transactions on Dependable and Secure Computing.
+[^1]: Shenshen Chen, Jian Luo, Dong Guo, Kai Gao and Y. Richard Yang, "Fast Inverse Model Transformation: Algebraic Framework for Fast Data Plane Verification", in IEEE Transactions on Dependable and Secure Computing.
 
-[^2] Dong Guo, Jian Luo, Kai Gao, and Y. Richard Yang, "Poster: Scaling Data Plane Verification with Throughput-Optimized Atomic Predicates", (ACM SIGCOMM '23).
+[^2]: Dong Guo, Jian Luo, Kai Gao, and Y. Richard Yang, "Poster: Scaling Data Plane Verification with Throughput-Optimized Atomic Predicates", (ACM SIGCOMM '23).
 
-[^3] Xu Liu, Peng Zhang, Hao Li, and Wenbing Sun, "Modular Data Plane Verification for Compositional Networks", (ACM CoNEXT '23).
+[^3]: Xu Liu, Peng Zhang, Hao Li, and Wenbing Sun, "Modular Data Plane Verification for Compositional Networks", (ACM CoNEXT '23).
 
 ## License
