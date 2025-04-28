@@ -1,15 +1,14 @@
-use std::time::SystemTime;
+use std::{collections::HashMap, fs::read_to_string};
 
-use fxhash::FxHashMap;
-use rapimt_core::{
-    action::seq_action::SeqAction,
-    prelude::{OxiddPredicateEngine, RuddyPredicateEngine},
-};
+use rapimt_core::{action::seq_action::SeqAction, prelude::RuddyPredicateEngine};
 use rapimt_im::{
-    im::MapMonoid,
+    im::MapInverseModel,
     prelude::{FastRuleMonitor, InverseModel, RuleMonitorLike, TPTRuleStore},
 };
-use rapimt_io::prelude::{DefaultInstLoader, FibLoader, InstanceLoader, TypedAction};
+use rapimt_io::{
+    default::loader::PortInfoBase,
+    prelude::{DefaultInstLoader, FibLoader, InstanceLoader},
+};
 
 fn main() {
     let engine = RuddyPredicateEngine::init(10_000, 1000);
@@ -21,64 +20,42 @@ fn main() {
     ];
 
     // 1. Load topology (port information)
-    let mut codexs = FxHashMap::default();
-    for dev in devs.iter() {
-        let spec_cont =
-            std::fs::read_to_string(format!("examples/stanford/spec/{}.spec", dev)).unwrap();
-        let codex = InstanceLoader::load(&loader, &spec_cont).unwrap();
-        codexs.insert(dev, codex);
-    }
+    let codexes: HashMap<&str, PortInfoBase> = devs
+        .iter()
+        .map(|&d| {
+            let spec_cont = read_to_string(format!("examples/stanford/spec/{}.spec", d)).unwrap();
+            let codex = loader.load(&spec_cont).unwrap();
+            (d, codex)
+        })
+        .collect();
 
     // 2. Create rule monitors
-    let mut monitors = FxHashMap::default();
-    for dev in devs.iter() {
-        monitors.insert(
-            dev,
-            FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine),
-        );
-    }
+    let mut monitors: HashMap<&str, FastRuleMonitor<_, _, TPTRuleStore<_, _>>> = devs
+        .iter()
+        .map(|&d| (d, FastRuleMonitor::<_, _, _>::new(&engine)))
+        .collect();
 
-    let mut mr1_timer = 0u128;
-    let mut r2_timer = 0u128;
-
-    // Global inverse model
-    // We choose FxHashMap to store the network-wide inverse model and Vec to store the actions.
-    let mut im: InverseModel<_, _, _, MapMonoid<SeqAction<_>, _>> = InverseModel::default();
-    // Incremental updates
-    let mut im_updates = FxHashMap::default();
-
-    // 3. Load fibs and get incremental update of each device
-    for d in devs.iter() {
-        let fib_cont = std::fs::read_to_string(format!("examples/stanford/fib/{}.fib", d)).unwrap();
-        // Load, parse and encode fib rules
-        let fibs = codexs[d].load(&engine, &fib_cont).unwrap().1;
-        let _timer = SystemTime::now();
-        // Feed fibs to the monitor and get the incremental update in the form of inverse model
-        // NOTICE:
-        //   1. we use FxHashMap to store the inverse model entries.
-        //   2. we use usize to represent an action in the device, alternatively, we can use
-        //      TypedAction here.
-        // let im_update: InverseModel<_, _, _, FxHashMap<Vec<TypedAction>, _>> =
-        let im_update: InverseModel<_, _, _, MapMonoid<SeqAction<usize>, _>> =
+    // 3. Load fibs and convert them into incremental updates (or we call it Device Inverse Model)
+    let im_updates = devs.iter().map(|&d| {
+        let fib_cont = read_to_string(format!("examples/stanford/fib/{}.fib", d)).unwrap();
+        let fibs = codexes[d].load(&engine, &fib_cont).unwrap().1;
+        let im_update: MapInverseModel<SeqAction<usize>, _, _> =
             monitors.get_mut(d).unwrap().insert(fibs);
-        mr1_timer += _timer.elapsed().unwrap().as_nanos();
-        im_updates.insert(d, im_update);
-    }
+        (d, im_update)
+    });
 
-    // 4. Merge incremental updates into one big network model
-    for (d, im_update) in im_updates {
-        let idx = devs.iter().position(|x| x == d).unwrap();
-        // expand usize to Vec<usize>
-        let im_update = InverseModel::from(im_update);
-        // resize local inverse model to network-wide inverse model
-        let im_update = InverseModel::resize(im_update, devs.len(), idx);
-        let _timer = SystemTime::now();
-        // merge the inverse model
-        im <<= im_update;
-        r2_timer += _timer.elapsed().unwrap().as_nanos();
-    }
-    println!("Monitor refresh time: {} us", mr1_timer / 1000);
-    println!("Inverse model << time: {} us", r2_timer / 1000);
+    // 4. Merge incremental updates into one big network model (or we call it Network Inverse Model)
+    let im: MapInverseModel<SeqAction<usize>, _, _> = im_updates
+        .map(|(d, im_update)| {
+            let idx = devs.iter().position(|&x| x == d).unwrap();
+            // resize device inverse model to the right network index
+            InverseModel::resize(im_update, devs.len(), idx)
+        })
+        .reduce(|mut x, y| {
+            x <<= y;
+            x
+        })
+        .unwrap();
 
     // 5. Check the number of equivalent classes in the network-wide
     // The number of equivalent classes in this stanford dataset is 155
