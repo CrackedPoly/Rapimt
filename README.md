@@ -76,17 +76,17 @@ assert_eq!(im.len(), 155)
 
 - [x] Use patricia tree to store rules in a device
 - [x] Optimize the inverse model resizing
-- [ ] Port [TOBDD][2] predicate engine to Rust
+- [ ] Port TOBDD[^2] predicate engine to Rust
 - [ ] Benchmark the performance in larger datasets
-- [ ] Implement more verification modules, such as the paper ["Modular DPV for
-  Compositional Networks"][3]
+- [ ] Implement more verification modules, such as the paper "Modular DPV for
+  Compositional Networks"[^3]
 
 ## Reference
 
-[1] S. Chen, J. Luo, D. Guo, K. Gao and Y. R. Yang, "Fast Inverse Model Transformation: Algebraic Framework for Fast Data Plane Verification", in IEEE Transactions on Dependable and Secure Computing.
+[^1] S. Chen, J. Luo, D. Guo, K. Gao and Y. R. Yang, "Fast Inverse Model Transformation: Algebraic Framework for Fast Data Plane Verification", in IEEE Transactions on Dependable and Secure Computing.
 
-[2] Dong Guo, Jian Luo, Kai Gao, and Y. Richard Yang, "Poster: Scaling Data Plane Verification with Throughput-Optimized Atomic Predicates", (ACM SIGCOMM '23).
+[^2] Dong Guo, Jian Luo, Kai Gao, and Y. Richard Yang, "Poster: Scaling Data Plane Verification with Throughput-Optimized Atomic Predicates", (ACM SIGCOMM '23).
 
-[3] Xu Liu, Peng Zhang, Hao Li, and Wenbing Sun, "Modular Data Plane Verification for Compositional Networks", (ACM CoNEXT '23).
+[^3] Xu Liu, Peng Zhang, Hao Li, and Wenbing Sun, "Modular Data Plane Verification for Compositional Networks", (ACM CoNEXT '23).
 
 ## License
