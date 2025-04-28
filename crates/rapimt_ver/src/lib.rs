@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 
-use fxhash::FxHashMap;
+use fxhash::{FxBuildHasher, FxHashMap};
 use petgraph::{
     acyclic::Acyclic,
     algo::all_simple_paths,
@@ -69,7 +69,13 @@ impl<NK, Node, Edge> CachedFwdGraph<NK, Node, Edge> {
                 if src == dst {
                     continue;
                 }
-                for path in all_simple_paths::<Vec<_>, _>(self.graph.inner(), src, dst, 0, None) {
+                for path in all_simple_paths::<Vec<_>, _, FxBuildHasher>(
+                    self.graph.inner(),
+                    src,
+                    dst,
+                    0,
+                    None,
+                ) {
                     for plugin in self.plugin.values_mut() {
                         plugin.recognize_path(self.graph.inner(), &path);
                     }

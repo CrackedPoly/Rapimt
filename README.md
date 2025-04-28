@@ -7,7 +7,7 @@ Inverse Model Transformation in Rust
 
 ## Introduction
 
-Rapimt is a data plane verification framework written in Rust.
+Rapimt is a data plane verification framework[^1] written in Rust.
 
 ## Features
 
@@ -18,10 +18,10 @@ Rapimt is a data plane verification framework written in Rust.
 ## Example
 
 How many equivalent classes are there in a network? Compute it by Inverse
-Models!
+Model! (see the full example in `crates/rapimt_io/examples/stanford`)
 
 ```rust
-let engine = RuddyPredicateEngine::init(100, 10);
+let engine = RuddyPredicateEngine::init(10_000, 1000);
 let loader = DefaultInstLoader {};
 let devs = vec![
     "bbra_rtr", "bbrb_rtr", "boza_rtr", "bozb_rtr", "coza_rtr", "cozb_rtr", "goza_rtr",
@@ -30,70 +30,63 @@ let devs = vec![
 ];
 
 // 1. Load topology (port information)
-let mut codexs = FxHashMap::default();
-for dev in devs.iter() {
-    let spec_cont =
-        std::fs::read_to_string(format!("examples/stanford/spec/{}.spec", dev)).unwrap();
-    let codex = InstanceLoader::load(&loader, &spec_cont).unwrap();
-    codexs.insert(dev, codex);
-}
+let codexes: HashMap<&str, PortInfoBase> = devs
+    .iter()
+    .map(|&d| {
+        let spec_cont = read_to_string(format!("examples/stanford/spec/{}.spec", d)).unwrap();
+        let codex = loader.load(&spec_cont).unwrap();
+        (d, codex)
+    })
+    .collect();
 
 // 2. Create rule monitors
-let mut monitors = FxHashMap::default();
-for dev in devs.iter() {
-    monitors.insert(dev, FastRuleMonitor::<_, _, TPTRuleStore<_, _>>::new(&engine));
-}
+let mut monitors: HashMap<&str, FastRuleMonitor<_, _, TPTRuleStore<_, _>>> = devs
+    .iter()
+    .map(|&d| (d, FastRuleMonitor::<_, _, _>::new(&engine)))
+    .collect();
 
-// Global inverse model
-// We choose FxHashMap to store the network-wide inverse model and Vec to store the actions.
-let mut im: InverseModel<_, _, _, FxHashMap<Vec<_>, _>> = InverseModel::default();
-// Incremental updates
-let mut im_updates = FxHashMap::default();
+// 3. Load fibs and convert them into incremental updates (or we call it Device Inverse Model)
+let im_updates = devs.iter().map(|&d| {
+    let fib_cont = read_to_string(format!("examples/stanford/fib/{}.fib", d)).unwrap();
+    let fibs = codexes[d].load(&engine, &fib_cont).unwrap().1;
+    let im_update: MapInverseModel<SeqAction<usize>, _, _> =
+        monitors.get_mut(d).unwrap().insert(fibs);
+    (d, im_update)
+});
 
-// 3. Load fibs and get incremental update of each device
-for d in devs.iter() {
-    let fib_cont = std::fs::read_to_string(format!("examples/stanford/fib/{}.fib", d)).unwrap();
-    // Load, parse and encode fib rules
-    let fibs = codexs[d].load(&engine, &fib_cont).unwrap().1;
-    // Feed fibs to the monitor and get the incremental update in the form of inverse model
-    // NOTICE:
-    //   1. we use FxHashMap to store the inverse model entries.
-    //   2. we use usize to represent an action in the device, alternatively, we can use
-    //      TypedAction here.
-    let im_update = monitors
-        .get_mut(d)
-        .unwrap()
-        .insert::<_, _, FxHashMap<usize, _>>(fibs);
-    // .insert::<_, _, FxHashMap<TypedAction, _>>(fibs);
-    im_updates.insert(d, im_update);
-}
-
-// 4. Merge incremental updates into one big network model
-for (d, im_update) in im_updates {
-    let idx = devs.iter().position(|x| x == d).unwrap();
-    // expand usize to Vec<usize>
-    let im_update = InverseModel::from(im_update);
-    // resize local inverse model to network-wide inverse model
-    let im_update = InverseModel::resize(im_update, devs.len(), idx);
-    // merge the inverse model
-    im <<= im_update;
-}
+// 4. Merge incremental updates into one big network model (or we call it Network Inverse Model)
+let im: MapInverseModel<SeqAction<usize>, _, _> = im_updates
+    .map(|(d, im_update)| {
+        let idx = devs.iter().position(|&x| x == d).unwrap();
+        // resize device inverse model to the right network index
+        InverseModel::resize(im_update, devs.len(), idx)
+    })
+    .reduce(|mut x, y| {
+        x <<= y;
+        x
+    })
+    .unwrap();
 
 // 5. Check the number of equivalent classes in the network-wide
 // The number of equivalent classes in this stanford dataset is 155
 assert_eq!(im.len(), 155)
 ```
 
-## Installation
-
 ## TODO List
 
 - [x] Use patricia tree to store rules in a device
 - [x] Optimize the inverse model resizing
+- [ ] Port TOBDD[^2] predicate engine to Rust
 - [ ] Benchmark the performance in larger datasets
 - [ ] Implement more verification modules, such as the paper "Modular DPV for
-  Compositional Networks"
+  Compositional Networks"[^3]
 
 ## Reference
+
+[^1]: Shenshen Chen, Jian Luo, Dong Guo, Kai Gao and Y. Richard Yang, "Fast Inverse Model Transformation: Algebraic Framework for Fast Data Plane Verification", in IEEE Transactions on Dependable and Secure Computing.
+
+[^2]: Dong Guo, Jian Luo, Kai Gao, and Y. Richard Yang, "Poster: Scaling Data Plane Verification with Throughput-Optimized Atomic Predicates", (ACM SIGCOMM '23).
+
+[^3]: Xu Liu, Peng Zhang, Hao Li, and Wenbing Sun, "Modular Data Plane Verification for Compositional Networks", (ACM CoNEXT '23).
 
 ## License

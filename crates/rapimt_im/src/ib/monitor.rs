@@ -1,4 +1,5 @@
 use crate::ib::rule::Rule;
+use crate::im::{IbVecMonoid, MapMonoid};
 use crate::{InverseModel, RuleMonitorLike};
 use fxhash::{FxBuildHasher, FxHashMap};
 use rapimt_core::prelude::{Action, Dimension, MatchEncoder, Predicate, Single};
@@ -21,14 +22,15 @@ where
     tmp_ow: FxHashMap<A, Predicate<ME::P>>,
 }
 
-impl<'p, A, OA, T, ME>
-    RuleMonitorLike<A, OA, T, FxHashMap<OA, Predicate<ME::P>>, ME::P, Rule<ME::P, A>>
+impl<'p, A, OA, T, ME, S>
+    RuleMonitorLike<A, OA, T, MapMonoid<OA, Predicate<ME::P>, S>, ME::P, Rule<ME::P, A>>
     for IbRuleMonitor<'p, A, ME>
 where
     A: Action<Single>,
     OA: Action<T, S = A>,
     T: Dimension,
     ME: MatchEncoder<'p>,
+    S: std::hash::BuildHasher + std::clone::Clone + std::default::Default,
 {
     fn clear(&mut self) {
         self.i_rules.clear();
@@ -43,7 +45,7 @@ where
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
         deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
-    ) -> InverseModel<OA, ME::P, T, FxHashMap<OA, Predicate<ME::P>>> {
+    ) -> InverseModel<OA, ME::P, T, MapMonoid<OA, Predicate<ME::P>, S>> {
         self.tmp_ow.clear();
         let mut p0 = self.engine.one();
         for r in deletion {
@@ -75,7 +77,8 @@ where
     }
 }
 
-impl<'p, A, OA, T, ME> RuleMonitorLike<A, OA, T, Vec<(OA, Predicate<ME::P>)>, ME::P, Rule<ME::P, A>>
+impl<'p, A, OA, T, ME>
+    RuleMonitorLike<A, OA, T, IbVecMonoid<(OA, Predicate<ME::P>)>, ME::P, Rule<ME::P, A>>
     for IbRuleMonitor<'p, A, ME>
 where
     A: Action<Single>,
@@ -96,7 +99,7 @@ where
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
         deletion: impl IntoIterator<Item = Rule<ME::P, A>>,
-    ) -> InverseModel<OA, ME::P, T, Vec<(OA, Predicate<ME::P>)>> {
+    ) -> InverseModel<OA, ME::P, T, IbVecMonoid<(OA, Predicate<ME::P>)>> {
         for r in deletion {
             self.store.remove(&r);
         }

@@ -13,7 +13,7 @@ fxhash = { workspace = true }
 num_enum = { workspace = true }
 log = { workspace = true }
 regex = { version = "1.11.1" }
-petgraph = { version = "0.7.1" }
+petgraph = { version = "0.8.1" }
 rayon = { version = "1.10.0" }
 typetag = "0.2"
 pest = "2"
