@@ -209,6 +209,14 @@ pub struct PortInfoBase {
     ports: RefCell<IndexSet<PortInfo, FxBuildHasher>>,
 }
 
+impl PortInfoBase {
+    /// Returns the device name.
+    #[inline]
+    pub fn get_dev(&self) -> &str {
+        &self.dev
+    }
+}
+
 impl<'a> ActionEncoder<'a> for PortInfoBase {
     type A = usize;
     type UA = TypedAction<'a>;

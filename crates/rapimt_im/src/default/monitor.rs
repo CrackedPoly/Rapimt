@@ -211,6 +211,7 @@ where
     ME: MatchEncoder<'p>,
     RS: RuleStore<A, ME::P>,
 {
+    /// Refresh the rule store and return an update of the refreshed rules.
     fn refresh<OA, T, M>(&mut self) -> InverseModel<OA, ME::P, T, M>
     where
         OA: Action<T, S = A>,
@@ -280,7 +281,7 @@ where
     }
 
     pub fn new(engine: &'p ME) -> Self {
-        // this is the default rule of every forwarding device
+        // default rule of every forwarding device
         let drop_rule = Rc::new(Rule {
             priority: -1,
             action: A::default_action(),

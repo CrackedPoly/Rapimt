@@ -636,7 +636,7 @@ mod tests {
         let (tag_from, tag_to) = constant::FIELD_MAP.get("tag").unwrap();
 
         // basic check: encoding is correct
-        let (p0, mvs) = engine.encode_matches([
+        let (p0, mvs) = engine.encode_matches(&[
             fm_ipv4_from!("dip", "192.168.0.0/24"),
             fm_exact_from!("tag", 2),
         ]);
@@ -680,7 +680,7 @@ mod tests {
 
         let fm0 = fm_range_from!("sport", 123u16, 147u16);
         let fm1 = fm_range_from!("dport", 123u16, 147u16);
-        let (_, mvs) = engine.encode_matches(vec![fm0, fm1]);
+        let (_, mvs) = engine.encode_matches(&vec![fm0, fm1]);
         assert_eq!(mvs.len(), 16);
     }
 }

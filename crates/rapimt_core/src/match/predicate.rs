@@ -99,6 +99,11 @@ impl<P: PredicateInner> Predicate<P> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    #[inline]
+    pub fn non_empty(&self) -> bool {
+        !self.0.is_empty()
+    }
 }
 
 impl<P: PredicateInner> Clone for Predicate<P> {
@@ -127,7 +132,7 @@ impl<P: PredicateInner> Debug for Predicate<P> {
     }
 }
 
-/// `!prediate` consumes the predicate.
+/// `!predicate` consumes the predicate.
 impl<P: PredicateInner> Not for Predicate<P> {
     type Output = Predicate<P>;
 
@@ -137,7 +142,7 @@ impl<P: PredicateInner> Not for Predicate<P> {
     }
 }
 
-/// `!(&prediate)` consumes the predicate reference.
+/// `!(&predicate)` consumes the predicate reference.
 impl<P: PredicateInner> Not for &'_ Predicate<P> {
     type Output = Predicate<P>;
 

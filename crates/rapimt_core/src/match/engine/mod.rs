@@ -130,7 +130,7 @@ where
         }
     }
 
-    fn encode_matches<'b, U: Unsigned, II: IntoIterator<Item = FieldMatch<'b, U>>>(
+    fn encode_matches<'b, U: Unsigned, II: IntoIterator<Item = &'b FieldMatch<'b, U>>>(
         &'a self,
         fms: II,
     ) -> (Predicate<Self::P>, Vec<MaskedValue>) {
@@ -138,7 +138,7 @@ where
         let mut mvs = vec![];
         let mut new_mvs = vec![];
         for fm in fms {
-            let (p, sub_mvs) = self.encode_match(fm);
+            let (p, sub_mvs) = self.encode_match(*fm);
             pred &= p;
             if mvs.is_empty() {
                 mvs.extend(sub_mvs)

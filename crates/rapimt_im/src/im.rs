@@ -232,7 +232,7 @@ where
     }
 }
 
-/// Invserse Model maps actions to predicates.
+/// Inverse Model maps actions to predicates.
 #[derive(Debug)]
 pub struct InverseModel<
     A: Action<T>,
