@@ -20,7 +20,7 @@ pub use oxidd_engine::{OxiddPredicate, OxiddPredicateEngine};
 pub use ruddy_engine::{RuddyPredicate, RuddyPredicateEngine};
 
 /// Parse field values and encodes them into a predicate.
-pub trait MatchEncoder<'a>
+pub trait MatchEncoder<'a>: Default
 where
     Self: 'a,
 {

@@ -204,6 +204,12 @@ impl RuddyPredicateEngine {
     }
 }
 
+impl<'a> Default for RuddyPredicateEngine {
+    fn default() -> Self {
+        Self::init(1000, 100)
+    }
+}
+
 impl<'a> MatchEncoder<'a> for RuddyPredicateEngine {
     type P = RuddyPredicate<'a>;
 

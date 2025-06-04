@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use fxhash::FxHashMap;
 use petgraph::{acyclic::Acyclic, data::Build, graph::DiGraph, visit::Bfs};
 use rapimt_core::{
@@ -17,9 +15,14 @@ use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use crate::error::*;
 use crate::{plugin::GraphPluginLike, AnyReport, CachedFwdGraph, SnapshotQuery};
 
-type ActionsRepr = Arc<SeqAction<FusedIdx>>;
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
+
+type ActionsRepr = Rc<SeqAction<FusedIdx>>;
 type IM<P> = InverseModel<ActionsRepr, P, Multiple, IbVecMonoid<(ActionsRepr, Predicate<P>)>>;
-type AnyGraphPlugin = Box<dyn GraphPluginLike<Guid, Arc<NodeCommon>, Arc<LinkSpec>>>;
+type AnyGraphPlugin = Box<dyn GraphPluginLike<Guid, Rc<NodeCommon>, Rc<LinkSpec>>>;
 
 pub struct SnapshotVerifier<'p, ME>
 where
@@ -33,7 +36,7 @@ where
     // fast lookup actions by predicate
     query_cache: FxHashMap<Predicate<ME::P>, ActionsRepr>,
     // forwarding graphs
-    graphs: FxHashMap<ActionsRepr, CachedFwdGraph<Guid, Arc<NodeCommon>, Arc<LinkSpec>>>,
+    graphs: FxHashMap<ActionsRepr, CachedFwdGraph<Guid, Rc<NodeCommon>, Rc<LinkSpec>>>,
     plugins: Vec<AnyGraphPlugin>,
 }
 
@@ -166,9 +169,14 @@ where
                 }
             }
         }
+        #[cfg(feature = "arc")]
         self.graphs.par_iter_mut().for_each(|(_, graph)| {
             graph.execute();
         });
+        #[cfg(not(feature = "arc"))]
+        self.graphs
+            .iter_mut()
+            .for_each(|(_, graph)| graph.execute());
         // run verification
         Ok(())
     }
@@ -179,7 +187,7 @@ where
     ME: MatchEncoder<'p>,
 {
     type NK = Guid;
-    type Edge = Arc<LinkSpec>;
+    type Edge = Rc<LinkSpec>;
 
     fn list_alert(&self) -> Vec<AnyReport> {
         let mut alerts = vec![];

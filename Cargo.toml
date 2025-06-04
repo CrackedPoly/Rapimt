@@ -54,3 +54,6 @@ tag = ["rapimt_internal/tag"]
 
 ## Support encoding 16-bit InfiniBand lid
 lid = ["rapimt_internal/lid"]
+
+## Use `Arc` instead of `Rc` for shared objects
+arc = ["rapimt_internal/arc"]

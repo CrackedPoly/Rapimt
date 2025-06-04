@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::{error::Error, path::Path};
 
 use crate::ib::loader::*;
@@ -7,6 +6,11 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use rapimt_core::action::ib::IbActionType;
+
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
 
 #[derive(Parser)]
 #[grammar = "src/ib/cmd_parser/ibfar.pest"]
@@ -72,7 +76,7 @@ fn parse_group_entry(pair: Pair<'_, Rule>) -> GroupSpec {
                     for p1 in p.into_inner() {
                         new_ports.push(parse_dec_ident(p1));
                     }
-                    let new_ports: Arc<[PortIdx]> = new_ports.into();
+                    let new_ports: Rc<[PortIdx]> = new_ports.into();
                     get_mut_cache().insert(key, new_ports.clone());
                     group.ports = new_ports;
                 }

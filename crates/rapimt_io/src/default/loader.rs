@@ -5,8 +5,13 @@ use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
     ptr::NonNull,
-    rc::Rc,
+    sync::Arc,
 };
+
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexSet;

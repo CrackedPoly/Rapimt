@@ -176,6 +176,12 @@ impl OxiddPredicateEngine {
     }
 }
 
+impl<'a> Default for OxiddPredicateEngine {
+    fn default() -> Self {
+        Self::init(1000, 100)
+    }
+}
+
 impl<'a> MatchEncoder<'a> for OxiddPredicateEngine {
     type P = OxiddPredicate<'a>;
 

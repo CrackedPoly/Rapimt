@@ -1,8 +1,13 @@
 use std::{
     cell::UnsafeCell,
     collections::{BTreeSet, BinaryHeap, HashMap},
-    rc::Rc,
+    sync::Arc,
 };
+
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
 
 use fxhash::{FxBuildHasher, FxHashMap};
 use rapimt_core::prelude::{

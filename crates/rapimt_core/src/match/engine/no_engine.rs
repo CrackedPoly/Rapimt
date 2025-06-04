@@ -24,6 +24,14 @@ impl<U: Unsigned> NoPredicateEngine<U> {
     }
 }
 
+impl<U: Unsigned> Default for NoPredicateEngine<U> {
+    fn default() -> Self {
+        Self {
+            _phantom: PhantomData,
+        }
+    }
+}
+
 impl<'a, U: Unsigned> MatchEncoder<'a> for NoPredicateEngine<U>
 where
     <U as std::str::FromStr>::Err: std::fmt::Debug,

@@ -1,6 +1,6 @@
 use std::{
     borrow::Borrow,
-    sync::{Arc, OnceLock},
+    sync::OnceLock,
 };
 
 use derivative::Derivative;
@@ -33,17 +33,22 @@ use crate::{
 
 use super::{DataPlane, IbDataPlaneConfig};
 
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
+
 ///// Cache for sharing ports vector.
-pub static mut CACHE: OnceLock<FxHashMap<String, Arc<[PortIdx]>>> = OnceLock::new();
+pub static mut CACHE: OnceLock<FxHashMap<String, Rc<[PortIdx]>>> = OnceLock::new();
 /// WARN: thread-unsafe.
-pub fn get_cache() -> &'static FxHashMap<String, Arc<[PortIdx]>> {
+pub fn get_cache() -> &'static FxHashMap<String, Rc<[PortIdx]>> {
     #[allow(static_mut_refs)]
     unsafe {
         CACHE.get_or_init(FxHashMap::default)
     }
 }
 /// WARN: thread-unsafe.
-pub fn get_mut_cache() -> &'static mut FxHashMap<String, Arc<[PortIdx]>> {
+pub fn get_mut_cache() -> &'static mut FxHashMap<String, Rc<[PortIdx]>> {
     #[allow(static_mut_refs)]
     unsafe {
         CACHE.get_mut_or_init(FxHashMap::default)
@@ -93,7 +98,7 @@ pub struct NodeCommon {
 #[derive(Derivative, Default, Debug)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct SwitchSpec {
-    pub common: Arc<NodeCommon>,
+    pub common: Rc<NodeCommon>,
 
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
@@ -104,7 +109,7 @@ pub struct SwitchSpec {
 #[derive(Derivative, Default, Debug)]
 #[derivative(PartialEq, Eq, Hash)]
 pub struct CaSpec {
-    pub common: Arc<NodeCommon>,
+    pub common: Rc<NodeCommon>,
 }
 
 /// Speed unit of a port.
@@ -144,7 +149,7 @@ pub struct PortSpec {
     pub port_guid: Guid,
     pub port_num: PortIdx,
     pub lid: Lid,
-    pub link: Option<Arc<LinkSpec>>,
+    pub link: Option<Rc<LinkSpec>>,
 }
 
 /// Link spec between two ports.
@@ -182,7 +187,7 @@ impl RawRuleLike for LftEntry {}
 #[derive(Default, Debug, Clone)]
 pub struct GroupSpec {
     pub group_idx: GroupIdx,
-    pub ports: Arc<[PortIdx]>,
+    pub ports: Rc<[PortIdx]>,
 }
 
 /// IB fib rule.
@@ -455,7 +460,7 @@ pub struct IbDataPlane<'p, ME: MatchEncoder<'p>> {
     switch_order: FxHashMap<Guid, usize>,
     switch_specs: FxHashMap<Guid, SwitchSpec>,
     ca_specs: FxHashMap<Guid, CaSpec>,
-    nodes: FxHashMap<Guid, Arc<NodeCommon>>,
+    nodes: FxHashMap<Guid, Rc<NodeCommon>>,
 }
 
 impl<'p, ME> IbDataPlane<'p, ME>
@@ -506,19 +511,19 @@ where
 
     type OT = Multiple;
 
-    type OA = Arc<SeqAction<FusedIdx>>;
+    type OA = Rc<SeqAction<FusedIdx>>;
 
     type R = Rule<ME::P, FusedIdx>;
 
     type RR = LftEntry;
 
-    type M = IbVecMonoid<(Arc<SeqAction<FusedIdx>>, Predicate<ME::P>)>;
+    type M = IbVecMonoid<(Rc<SeqAction<FusedIdx>>, Predicate<ME::P>)>;
 
     type Mon = IbRuleMonitor<'p, FusedIdx, ME>;
 
     type NK = Guid;
 
-    type Topo = Arc<NodeCommon>;
+    type Topo = Rc<NodeCommon>;
 
     // Load the snapshot from the given directory.
     // This method implementation is ugly because the input format is not regular.

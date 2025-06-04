@@ -4,9 +4,12 @@ version = "0.2.3"
 edition = "2021"
 
 [dependencies]
-rapimt_core = { path = "../rapimt_core", features = ["lid"] , version = "0.2.2" }
-rapimt_io = { path = "../rapimt_io" , version = "0.2.2" }
-rapimt_ver = { path = "../rapimt_ver" , version = "0.2.2" }
+rapimt_core = { path = "../rapimt_core", features = [
+  "lid",
+  "arc",
+], version = "0.2.2" }
+rapimt_io = { path = "../rapimt_io", features = ["arc"], version = "0.2.2" }
+rapimt_ver = { path = "../rapimt_ver", features = ["arc"], version = "0.2.2" }
 serde = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
