@@ -1,4 +1,4 @@
-# Flash Server for Infiniband networks
+# Flash Server for InfiniBand networks
 
 ## Features
 - Load network snapshot from ibdiagnet2
