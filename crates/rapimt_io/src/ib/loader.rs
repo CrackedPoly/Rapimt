@@ -1,7 +1,4 @@
-use std::{
-    borrow::Borrow,
-    sync::OnceLock,
-};
+use std::{borrow::Borrow, sync::OnceLock};
 
 use derivative::Derivative;
 use funty::Unsigned;
@@ -28,7 +25,7 @@ use snafu::{OptionExt, ResultExt};
 
 use crate::{
     error::*,
-    prelude::csv_parser::{load_groups, load_nodes},
+    prelude::ib::db_csv_parser::csv_parser::{load_groups, load_nodes},
 };
 
 use super::{DataPlane, IbDataPlaneConfig};

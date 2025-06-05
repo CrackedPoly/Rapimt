@@ -24,34 +24,27 @@ pub trait FamilyDecl {
     fn get_field_declaration(&self, name: &str) -> Option<FieldDeclaration>;
 }
 
-/// Compile-time determined match family.
-pub struct MatchFamily;
-
 /// (codegen) Decide field names and bit positions.
 pub mod constant {
-    use super::{FamilyDecl, FieldDeclaration, MatchFamily};
+    use super::{FamilyDecl, FieldDeclaration};
     use bitvec::order::Lsb0;
 
     include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
-
-    pub const GLOBAL_FAMILY: MatchFamily = MatchFamily;
 
     pub type HeaderBitOrder = Lsb0;
     pub type HeaderBitStore = u8;
 
     pub const HEADERSTORENUM: usize = MAX_POS / HeaderBitStore::BITS as usize;
 
-    impl FamilyDecl for MatchFamily {
-        fn get_field_declaration(&self, name: &str) -> Option<FieldDeclaration> {
-            if let Some((field_name, (from, to))) = FIELD_MAP.get_entry(name) {
-                Some(FieldDeclaration {
-                    name: field_name,
-                    from: *from,
-                    to: *to,
-                })
-            } else {
-                None
-            }
+    pub fn get_field_declaration(name: &str) -> Option<FieldDeclaration> {
+        if let Some((field_name, (from, to))) = FIELD_MAP.get_entry(name) {
+            Some(FieldDeclaration {
+                name: field_name,
+                from: *from,
+                to: *to,
+            })
+        } else {
+            None
         }
     }
 }

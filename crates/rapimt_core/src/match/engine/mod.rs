@@ -44,7 +44,7 @@ where
         &'a self,
         fm: FieldMatch<U>,
     ) -> (Predicate<Self::P>, Vec<MaskedValue>) {
-        match constant::GLOBAL_FAMILY.get_field_declaration(fm.field) {
+        match constant::get_field_declaration(fm.field) {
             Some(fdecl) => {
                 let from = fdecl.from;
                 let to = fdecl.to;
@@ -95,7 +95,7 @@ where
     }
 
     fn encode_match_wo_mv<U: Unsigned>(&'a self, fm: FieldMatch<U>) -> Predicate<Self::P> {
-        match constant::GLOBAL_FAMILY.get_field_declaration(fm.field) {
+        match constant::get_field_declaration(fm.field) {
             Some(fdecl) => {
                 let from = fdecl.from;
                 let to = fdecl.to;

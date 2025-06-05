@@ -8,7 +8,7 @@ pub mod im;
 pub mod prelude {
     pub use crate::{
         default::monitor::{FastRuleMonitor, RuleStore, SimpleRuleStore, TPTRuleStore},
-        default::rule::{Rule, UncodedRule},
+        default::rule::{RawRule, Rule, UncodedRule},
         im::{InverseModel, InverseModelMonoid, MapInverseModel, VecInverseModel},
         RuleLike, RuleMonitorLike,
     };

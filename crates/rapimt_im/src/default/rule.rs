@@ -1,7 +1,27 @@
 use std::fmt::{Display, Formatter};
 
 use crate::RuleLike;
-use rapimt_core::prelude::{Action, CodedAction, MaskedValue, Predicate, PredicateInner, Single};
+use rapimt_core::{
+    prelude::{Action, CodedAction, MaskedValue, Predicate, PredicateInner, Single},
+    r#match::raw_match::FieldMatch,
+};
+
+/// Match&action-unencoded rule of a device.
+#[derive(Debug)]
+pub struct RawRule {
+    pub priority: i32,
+    pub mch: Vec<FieldMatch<'static, u64>>,
+    pub port: String,
+}
+
+/// Action-unencoded rule of a device.
+#[derive(Eq, PartialEq, Hash, Debug)]
+pub struct UncodedRule<P: PredicateInner> {
+    pub priority: i32,
+    pub port: String,
+    pub predicate: Predicate<P>,
+    pub origin: Vec<MaskedValue>,
+}
 
 /// Local rule of a device.
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
@@ -25,15 +45,6 @@ impl<P: PredicateInner, A: Action<Single>> RuleLike for Rule<P, A> {
     fn predicate(&self) -> &Predicate<Self::P> {
         &self.predicate
     }
-}
-
-/// Action-unencoded (raw) rule of a device.
-#[derive(Eq, PartialEq, Hash, Debug)]
-pub struct UncodedRule<P: PredicateInner> {
-    pub priority: i32,
-    pub port: String,
-    pub predicate: Predicate<P>,
-    pub origin: Vec<MaskedValue>,
 }
 
 impl<P: PredicateInner, A: Action<Single>> PartialOrd for Rule<P, A> {

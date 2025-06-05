@@ -5,7 +5,6 @@ use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
     ptr::NonNull,
-    sync::Arc,
 };
 
 #[cfg(not(feature = "arc"))]
@@ -29,7 +28,7 @@ use nom::{
 use rapimt_core::prelude::{
     Action, ActionEncoder, FieldMatch, FwdActionType, Match, PredicateEngine, Single, UncodedAction,
 };
-use rapimt_im::prelude::Rule;
+use rapimt_im::{default::rule::RawRule, prelude::Rule};
 
 use crate::{
     default::{
@@ -475,6 +474,21 @@ impl<'a> FibLoader<'a, TypedAction<'a>> for PortInfoBase {
     }
 }
 
+#[derive(Default)]
+pub struct DefaultFibLoader {}
+
+impl DefaultFibLoader {
+    pub fn load<'a, 'x, Err: ParseError<&'x str>>(
+        &'a self,
+        content: &'x str,
+    ) -> IResult<(), (String, Vec<RawRule>), Err> {
+        let (rest, dev) = delimited(multispace0, parse_dev, multispace1).parse(content)?;
+        let (rest, rules) = separated_list0(multispace1, parse_ipv4_rule_raw()).parse(rest)?;
+        let (_, _) = all_consuming(multispace0).parse(rest)?;
+        Ok(((), (dev.to_owned(), rules)))
+    }
+}
+
 /// Returns a closure that parses an IPv4 rule and returns a [Rule] instance.
 /// The closure have the lifetime of MatchEncoder's 'p and ActionEncoder's 'a,
 /// where 'a == 'p.
@@ -561,6 +575,40 @@ where
                 action,
                 predicate: pred,
                 origin: mvs,
+            },
+        ))
+    }
+}
+
+fn parse_ipv4_rule_raw<'x, E>() -> impl Fn(&'x str) -> IResult<&'x str, RawRule, E>
+where
+    E: ParseError<&'x str>,
+{
+    move |input| {
+        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = (
+            tag("fw"),
+            multispace1,
+            alt((parse_ipv4_dotted, parse_ipv4_num)),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<u32>().unwrap()),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<i32>().unwrap()),
+            multispace1,
+            parse_port,
+        )
+            .parse(input)?;
+        let value = value as u64;
+        let mask: u64 = ((1 << p_len) - 1) << (32 - p_len);
+        let fm = FieldMatch {
+            field: "dip",
+            cond: Match::TernaryMatch { value, mask },
+        };
+        Ok((
+            rest,
+            RawRule {
+                priority: prio,
+                mch: vec![fm],
+                port: port_name.to_owned(),
             },
         ))
     }

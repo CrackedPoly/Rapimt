@@ -1,7 +1,7 @@
 use crate::{
     error::*,
     ib::loader::{Guid, Lid},
-    prelude::{
+    prelude::ib::loader::{
         get_cache, get_mut_cache, GroupIdx, GroupSpec, LftEntry, LinkSpec, NodeCommon, NodeType,
         PortIdx, PortSpec,
     },

@@ -241,7 +241,8 @@ pub struct InverseModel<
     M: InverseModelMonoid<A, P, T>,
 >(pub M, PhantomData<(A, P, T)>);
 
-pub type MapInverseModel<A, P, T> = InverseModel<A, P, T, MapMonoid<A, Predicate<P>, FxBuildHasher>>;
+pub type MapInverseModel<A, P, T> =
+    InverseModel<A, P, T, MapMonoid<A, Predicate<P>, FxBuildHasher>>;
 pub type VecInverseModel<A, P, T> = InverseModel<A, P, T, IbVecMonoid<(A, Predicate<P>)>>;
 
 impl<A, P, T, M> Default for InverseModel<A, P, T, M>
@@ -355,6 +356,39 @@ where
                 .collect(),
             PhantomData,
         )
+    }
+}
+
+impl<A, P, S> InverseModel<A, P, Multiple, MapMonoid<A, Predicate<P>, S>>
+where
+    A: Actions,
+    P: PredicateInner,
+    S: BuildHasher + Clone + Default,
+{
+    /// fix: frequent memory realloc
+    pub fn resize_(&mut self, to: usize, offset: usize) {
+        self.0 .0 = self
+            .0
+             .0
+            .iter()
+            .map(|(a, p)| {
+                let mut a_ = a.clone();
+                a_.resize_(to, offset);
+                (a_, p.clone())
+            })
+            .collect();
+    }
+}
+
+impl<A, P> InverseModel<A, P, Multiple, IbVecMonoid<(A, Predicate<P>)>>
+where
+    A: Actions,
+    P: PredicateInner,
+{
+    pub fn resize_(&mut self, to: usize, offset: usize) {
+        self.0 .0.iter_mut().for_each(|(a, p)| {
+            a.resize_(to, offset);
+        })
     }
 }
 
