@@ -386,7 +386,7 @@ where
     P: PredicateInner,
 {
     pub fn resize_(&mut self, to: usize, offset: usize) {
-        self.0 .0.iter_mut().for_each(|(a, p)| {
+        self.0 .0.iter_mut().for_each(|(a, _p)| {
             a.resize_(to, offset);
         })
     }

@@ -10,6 +10,7 @@ use rapimt_io::ib::{
     loader::{FusedIdx, Guid, IbDataPlane, LftEntry, Lid, LinkSpec, NodeCommon},
     DataPlane, IbDataPlaneConfig,
 };
+#[cfg(feature = "arc")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::error::*;

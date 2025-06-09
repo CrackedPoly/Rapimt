@@ -19,14 +19,9 @@ pub struct FieldDeclaration {
     pub to: usize,
 }
 
-/// Lookup field declaration by name.
-pub trait FamilyDecl {
-    fn get_field_declaration(&self, name: &str) -> Option<FieldDeclaration>;
-}
-
 /// (codegen) Decide field names and bit positions.
 pub mod constant {
-    use super::{FamilyDecl, FieldDeclaration};
+    use super::FieldDeclaration;
     use bitvec::order::Lsb0;
 
     include!(concat!(env!("OUT_DIR"), "/codegen.rs"));

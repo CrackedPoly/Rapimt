@@ -22,7 +22,7 @@ use nom::{
     error::{ErrorKind, ParseError},
     multi::{separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair},
-    IResult, Parser,
+    Finish, IResult, Parser,
 };
 
 use rapimt_core::prelude::{
@@ -279,12 +279,11 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
     }
 
     fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Result<Self::A, Self::Err> {
-        Ok(self
-            .ports
-            .borrow()
-            .get_full(port_name.as_ref())
-            .map(|(idx, _)| idx)
-            .unwrap())
+        if let Some((idx, _)) = self.ports.borrow().get_full(port_name.as_ref()) {
+            Ok(idx)
+        } else {
+            self.encode(self.lookup(port_name)?)
+        }
     }
 }
 
@@ -478,7 +477,7 @@ impl<'a> FibLoader<'a, TypedAction<'a>> for PortInfoBase {
 pub struct DefaultFibLoader {}
 
 impl DefaultFibLoader {
-    pub fn load<'a, 'x, Err: ParseError<&'x str>>(
+    fn _load<'a, 'x, Err: ParseError<&'x str>>(
         &'a self,
         content: &'x str,
     ) -> IResult<(), (String, Vec<RawRule>), Err> {
@@ -486,6 +485,17 @@ impl DefaultFibLoader {
         let (rest, rules) = separated_list0(multispace1, parse_ipv4_rule_raw()).parse(rest)?;
         let (_, _) = all_consuming(multispace0).parse(rest)?;
         Ok(((), (dev.to_owned(), rules)))
+    }
+
+    pub fn load<'x>(
+        &self,
+        content: &'x str,
+    ) -> Result<(String, Vec<RawRule>), nom::error::Error<&'x str>> {
+        let res = self._load(content).finish();
+        match res {
+            Ok((_, rules)) => Ok(rules),
+            Err(e) => Err(e),
+        }
     }
 }
 

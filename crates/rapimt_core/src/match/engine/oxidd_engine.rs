@@ -176,7 +176,7 @@ impl OxiddPredicateEngine {
     }
 }
 
-impl<'a> Default for OxiddPredicateEngine {
+impl Default for OxiddPredicateEngine {
     fn default() -> Self {
         Self::init(1000, 100)
     }
@@ -256,13 +256,13 @@ impl<'a> PredicateEngine<'a> for OxiddPredicateEngine {
 
     #[cfg(feature = "dip")]
     fn erase_dip(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.dip_varset_pair.0).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.dip_varset_pair.0).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
     #[cfg(feature = "dip")]
     fn erase_except_dip(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.dip_varset_pair.1).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.dip_varset_pair.1).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
@@ -276,13 +276,13 @@ impl<'a> PredicateEngine<'a> for OxiddPredicateEngine {
 
     #[cfg(feature = "sip")]
     fn erase_sip(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.sip_varset_pair.0).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.sip_varset_pair.0).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
     #[cfg(feature = "sip")]
     fn erase_except_sip(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.sip_varset_pair.1).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.sip_varset_pair.1).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
@@ -296,13 +296,13 @@ impl<'a> PredicateEngine<'a> for OxiddPredicateEngine {
 
     #[cfg(feature = "dport")]
     fn erase_dport(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.dport_varset_pair.0).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.dport_varset_pair.0).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
     #[cfg(feature = "dport")]
     fn erase_except_dport(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.dport_varset_pair.1).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.dport_varset_pair.1).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
@@ -316,13 +316,13 @@ impl<'a> PredicateEngine<'a> for OxiddPredicateEngine {
 
     #[cfg(feature = "sport")]
     fn erase_sport(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.sport_varset_pair.0).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.sport_varset_pair.0).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
     #[cfg(feature = "sport")]
     fn erase_except_sport(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.sport_varset_pair.1).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.sport_varset_pair.1).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
@@ -336,13 +336,13 @@ impl<'a> PredicateEngine<'a> for OxiddPredicateEngine {
 
     #[cfg(feature = "tag")]
     fn erase_tag(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.tag_varset_pair.0).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.tag_varset_pair.0).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 
     #[cfg(feature = "tag")]
     fn erase_except_tag(&'a self, before: &Predicate<Self::P>) -> Predicate<Self::P> {
-        let bdd = BDDFunction::exist(&before.0.bdd, &self.tag_varset_pair.1).unwrap();
+        let bdd = BDDFunction::exists(&before.0.bdd, &self.tag_varset_pair.1).unwrap();
         Predicate::from(OxiddPredicate { bdd, engine: self })
     }
 }

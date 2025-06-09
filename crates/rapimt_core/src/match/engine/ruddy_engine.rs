@@ -204,7 +204,7 @@ impl RuddyPredicateEngine {
     }
 }
 
-impl<'a> Default for RuddyPredicateEngine {
+impl Default for RuddyPredicateEngine {
     fn default() -> Self {
         Self::init(1000, 100)
     }

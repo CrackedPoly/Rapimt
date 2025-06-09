@@ -7,7 +7,7 @@
 //!
 use std::io::Result;
 
-use crate::r#match::family::{constant, FamilyDecl};
+use crate::r#match::family::constant;
 use crate::r#match::predicate::{Predicate, PredicateInner};
 use crate::r#match::raw_match::{FieldMatch, MaskedValue, Match};
 use funty::Unsigned;

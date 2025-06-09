@@ -1,7 +1,6 @@
 use std::{
     cell::UnsafeCell,
     collections::{BTreeSet, BinaryHeap, HashMap},
-    sync::Arc,
 };
 
 #[cfg(not(feature = "arc"))]
