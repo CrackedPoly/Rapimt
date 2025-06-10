@@ -219,6 +219,14 @@ impl PortInfoBase {
     pub fn get_dev(&self) -> &str {
         &self.dev
     }
+
+    pub fn neighbors(&self) -> impl IntoIterator<Item = Rc<str>> {
+        self.nbrs
+            .borrow()
+            .iter()
+            .map(|nbr| nbr.neighbor.clone())
+            .collect::<Vec<_>>()
+    }
 }
 
 impl<'a> ActionEncoder<'a> for PortInfoBase {
