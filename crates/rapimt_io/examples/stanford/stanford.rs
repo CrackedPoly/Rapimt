@@ -10,6 +10,16 @@ use rapimt_io::{
     prelude::{DefaultInstLoader, FibLoader, InstanceLoader},
 };
 
+/// Runs the Stanford dataset example, loading device specifications and FIBs, constructing per-device and network-wide inverse models, and validating the expected number of equivalence classes.
+///
+/// This function initializes the predicate engine and loaders, reads device topology and FIB files, builds rule monitors and device inverse models, merges them into a network-wide inverse model, and asserts that the resulting model contains exactly 155 equivalence classes for the Stanford dataset.
+///
+/// # Examples
+///
+/// ```
+/// // To run the example, execute the binary:
+/// // cargo run --example stanford
+/// ```
 fn main() {
     let engine = RuddyPredicateEngine::init(10_000, 1000);
     let loader = DefaultInstLoader {};

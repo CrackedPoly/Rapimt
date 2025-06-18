@@ -178,6 +178,17 @@ where
     RS: RuleStore<A, ME::P>,
     S: std::hash::BuildHasher + std::clone::Clone + std::default::Default,
 {
+    /// Clears all rules and resets the monitor to its default state.
+    ///
+    /// Removes all inserted and deleted rules from the monitor, clears the underlying rule store,
+    /// and re-inserts the default rule as the only active rule.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// monitor.clear();
+    /// // Only the default rule remains active after clearing.
+    /// ```
     fn clear(&mut self) {
         self.store.clear();
         self.i_rules.clear();
@@ -185,6 +196,27 @@ where
         self.i_rules.push(self.default_rule.clone());
     }
 
+    /// Updates the rule monitor by applying rule insertions and deletions, then recomputes and returns the inverse model.
+    ///
+    /// This method inserts new rules and deletes specified rules from the internal store, updates the corresponding heaps,
+    /// and refreshes the inverse model to reflect the current rule set. If this is the first update, the default rule is also inserted.
+    ///
+    /// # Parameters
+    /// - `insertion`: An iterable collection of rules to be inserted.
+    /// - `deletion`: An iterable collection of rules to be deleted.
+    ///
+    /// # Returns
+    /// An `InverseModel` mapping output actions to predicates, representing the current state of the rule set.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut monitor = FastRuleMonitor::new(engine, store);
+    /// let rules_to_add = vec![rule1, rule2];
+    /// let rules_to_remove = vec![rule3];
+    /// let inverse_model = monitor.update(rules_to_add, rules_to_remove);
+    /// // `inverse_model` now reflects the updated rule set.
+    /// ```
     fn update(
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
