@@ -11,7 +11,7 @@ RuDDy = { workspace = true }
 num_enum = { workspace = true }
 serde = { workspace = true }
 funty = { workspace = true }
-oxidd = { version = "0.10.0", features = [
+oxidd = { version = "0.11.0", features = [
   "bdd",
   "manager-pointer",
   "multi-threading",
