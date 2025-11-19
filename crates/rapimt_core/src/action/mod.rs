@@ -35,9 +35,12 @@ use std::{
     error::Error,
     fmt::{Debug, Display},
     hash::Hash,
-    rc::Rc,
-    sync::Arc,
 };
+
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
 
 pub trait ActionType:
     Into<u8> + Clone + Debug + Copy + PartialEq + Eq + Hash + PartialOrd + Ord + Default
@@ -229,47 +232,5 @@ impl<A: Actions> Actions for Rc<A> {
     }
     fn index_mut(&mut self, index: usize) -> &mut Self::S {
         Rc::make_mut(self).index_mut(index)
-    }
-}
-
-impl<A: Actions> Action<Multiple> for Arc<A> {
-    type S = A::S;
-
-    fn default_action() -> Self {
-        Arc::new(A::default_action())
-    }
-
-    fn no_overwrite() -> Self {
-        Arc::new(A::no_overwrite())
-    }
-
-    fn overwritten(&self, rhs: &Self) -> Self {
-        Arc::new(self.as_ref().overwritten(rhs.as_ref()))
-    }
-
-    fn overwritten_(&mut self, rhs: &Self) {
-        Arc::make_mut(self).overwritten_(rhs.as_ref());
-    }
-
-    fn from_single(single: Self::S) -> Self {
-        Arc::new(A::from_single(single))
-    }
-}
-
-impl<A: Actions> Actions for Arc<A> {
-    fn ndim(&self) -> usize {
-        self.as_ref().ndim()
-    }
-    fn diff(&self, rhs: &Self) -> usize {
-        self.as_ref().diff(rhs.as_ref())
-    }
-    fn resize_(&mut self, to: usize, offset: usize) {
-        Arc::make_mut(self).resize_(to, offset);
-    }
-    fn index(&self, index: usize) -> &Self::S {
-        self.as_ref().index(index)
-    }
-    fn index_mut(&mut self, index: usize) -> &mut Self::S {
-        Arc::make_mut(self).index_mut(index)
     }
 }

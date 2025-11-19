@@ -7,7 +7,7 @@ compares the actual behavior against the expected state.
 
 ## Products
 
-- [x] Flash Server for Infiniband networks
+- [x] Flash Server for InfiniBand networks
 - [] Flash Server for RoCE networks
 
 ## Installation

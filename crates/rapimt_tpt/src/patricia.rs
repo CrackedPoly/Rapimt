@@ -764,4 +764,50 @@ mod tests {
         tpt.clear();
         assert_eq!(tpt.all().len(), 0);
     }
+
+    #[test]
+    fn test_tpt_e2e() {
+        let mut tpt = TernaryPatriciaTree::<&str, HashSet<&str>>::new(32);
+        let str0 = "01***";
+        let str1 = "011**";
+        let str2 = "010**";
+        let str3 = "01*1*";
+        let str4 = "0****";
+        let segmentizer = |s| Segmentizer::from(from_str(s));
+
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_insert_init.pdf");
+
+        tpt.insert(str0, segmentizer(str0));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_insert0.pdf");
+
+        tpt.insert(str1, segmentizer(str1));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_insert1.pdf");
+
+        tpt.insert(str2, segmentizer(str2));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_insert2.pdf");
+
+        tpt.insert(str3, segmentizer(str3));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_insert3.pdf");
+
+        tpt.insert(str4, segmentizer(str4));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_insert4.pdf");
+
+        tpt.delete(&str0, segmentizer(str0));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_delete0.pdf");
+
+        tpt.delete(&str2, segmentizer(str2));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_delete1.pdf");
+
+        tpt.delete(&str1, segmentizer(str1));
+        #[cfg(feature = "graphviz")]
+        tpt.visualize("debug/test_tpt_e2e_delete2.pdf");
+    }
 }

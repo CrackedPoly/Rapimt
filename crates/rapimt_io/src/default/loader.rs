@@ -5,8 +5,12 @@ use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
     ptr::NonNull,
-    rc::Rc,
 };
+
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
 
 use fxhash::FxBuildHasher;
 use indexmap::IndexSet;
@@ -18,13 +22,13 @@ use nom::{
     error::{ErrorKind, ParseError},
     multi::{separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair},
-    IResult, Parser,
+    Finish, IResult, Parser,
 };
 
 use rapimt_core::prelude::{
     Action, ActionEncoder, FieldMatch, FwdActionType, Match, PredicateEngine, Single, UncodedAction,
 };
-use rapimt_im::prelude::Rule;
+use rapimt_im::{default::rule::RawRule, prelude::Rule};
 
 use crate::{
     default::{
@@ -201,12 +205,28 @@ impl<'a> UncodedAction<'a> for TypedAction<'a> {
 #[derive(Debug)]
 pub struct PortInfoBase {
     #[allow(dead_code)]
-    dev: String,
+    dev: Rc<str>,
     // port name -> neighbor info
     #[allow(dead_code)]
     nbrs: RefCell<HashSet<NeighborInfo, FxBuildHasher>>,
     // port name -> port info
     ports: RefCell<IndexSet<PortInfo, FxBuildHasher>>,
+}
+
+impl PortInfoBase {
+    /// Returns the device name.
+    #[inline]
+    pub fn get_dev(&self) -> Rc<str> {
+        self.dev.clone()
+    }
+
+    pub fn neighbors(&self) -> impl IntoIterator<Item = Rc<str>> {
+        self.nbrs
+            .borrow()
+            .iter()
+            .map(|nbr| nbr.neighbor.clone())
+            .collect::<Vec<_>>()
+    }
 }
 
 impl<'a> ActionEncoder<'a> for PortInfoBase {
@@ -267,12 +287,11 @@ impl<'a> ActionEncoder<'a> for PortInfoBase {
     }
 
     fn encode_raw(&self, port_name: impl AsRef<Self::K>) -> Result<Self::A, Self::Err> {
-        Ok(self
-            .ports
-            .borrow()
-            .get_full(port_name.as_ref())
-            .map(|(idx, _)| idx)
-            .unwrap())
+        if let Some((idx, _)) = self.ports.borrow().get_full(port_name.as_ref()) {
+            Ok(idx)
+        } else {
+            self.encode(self.lookup(port_name)?)
+        }
     }
 }
 
@@ -351,7 +370,7 @@ impl InstanceLoader<'_, PortInfoBase> for DefaultInstLoader {
         Ok((
             (),
             PortInfoBase {
-                dev: dev.to_string(),
+                dev: dev.into(),
                 nbrs: RefCell::new(nbrs.into_inner()),
                 ports: RefCell::new(ports),
             },
@@ -462,6 +481,32 @@ impl<'a> FibLoader<'a, TypedAction<'a>> for PortInfoBase {
     }
 }
 
+#[derive(Default)]
+pub struct DefaultFibLoader {}
+
+impl DefaultFibLoader {
+    fn _load<'a, 'x, Err: ParseError<&'x str>>(
+        &'a self,
+        content: &'x str,
+    ) -> IResult<(), (String, Vec<RawRule>), Err> {
+        let (rest, dev) = delimited(multispace0, parse_dev, multispace1).parse(content)?;
+        let (rest, rules) = separated_list0(multispace1, parse_ipv4_rule_raw()).parse(rest)?;
+        let (_, _) = all_consuming(multispace0).parse(rest)?;
+        Ok(((), (dev.to_owned(), rules)))
+    }
+
+    pub fn load<'x>(
+        &self,
+        content: &'x str,
+    ) -> Result<(String, Vec<RawRule>), nom::error::Error<&'x str>> {
+        let res = self._load(content).finish();
+        match res {
+            Ok((_, rules)) => Ok(rules),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 /// Returns a closure that parses an IPv4 rule and returns a [Rule] instance.
 /// The closure have the lifetime of MatchEncoder's 'p and ActionEncoder's 'a,
 /// where 'a == 'p.
@@ -553,6 +598,40 @@ where
     }
 }
 
+fn parse_ipv4_rule_raw<'x, E>() -> impl Fn(&'x str) -> IResult<&'x str, RawRule, E>
+where
+    E: ParseError<&'x str>,
+{
+    move |input| {
+        let (rest, (_, _, value, _, p_len, _, prio, _, port_name)) = (
+            tag("fw"),
+            multispace1,
+            alt((parse_ipv4_dotted, parse_ipv4_num)),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<u32>().unwrap()),
+            multispace1,
+            map(parse_digits, |s: &str| s.parse::<i32>().unwrap()),
+            multispace1,
+            parse_port,
+        )
+            .parse(input)?;
+        let value = value as u64;
+        let mask: u64 = ((1 << p_len) - 1) << (32 - p_len);
+        let fm = FieldMatch {
+            field: "dip",
+            cond: Match::TernaryMatch { value, mask },
+        };
+        Ok((
+            rest,
+            RawRule {
+                priority: prio,
+                mch: vec![fm],
+                port: port_name.to_owned(),
+            },
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rapimt_core::{action::seq_action::SeqAction, r#match::engine::RuddyPredicateEngine};
@@ -574,7 +653,7 @@ mod tests {
         port gi1 flood ge0 ge1
         "#;
         let base = loader.load(spec).unwrap();
-        assert_eq!(base.dev, "dev0");
+        assert_eq!(base.dev, "dev0".into());
         assert_eq!(base.nbrs.borrow().len(), 2);
         assert_eq!(base.ports.borrow().len(), 6);
 
@@ -750,7 +829,7 @@ mod tests {
         let im: InverseModel<_, _, _, MapMonoid<usize, _>> = fib_monitor.insert(fibs.clone());
         assert_eq!(im.len(), 3);
 
-        RuleMonitorLike::<_, usize, _, MapMonoid<_, _>, _, _>::clear(&mut fib_monitor);
+        fib_monitor.clear();
         let im: InverseModel<_, _, _, MapMonoid<usize, _>> = fib_monitor.insert(fibs);
         assert_eq!(im.len(), 3);
 

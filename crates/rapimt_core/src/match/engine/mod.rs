@@ -7,7 +7,7 @@
 //!
 use std::io::Result;
 
-use crate::r#match::family::{constant, FamilyDecl};
+use crate::r#match::family::constant;
 use crate::r#match::predicate::{Predicate, PredicateInner};
 use crate::r#match::raw_match::{FieldMatch, MaskedValue, Match};
 use funty::Unsigned;
@@ -20,7 +20,7 @@ pub use oxidd_engine::{OxiddPredicate, OxiddPredicateEngine};
 pub use ruddy_engine::{RuddyPredicate, RuddyPredicateEngine};
 
 /// Parse field values and encodes them into a predicate.
-pub trait MatchEncoder<'a>
+pub trait MatchEncoder<'a>: Default
 where
     Self: 'a,
 {
@@ -44,7 +44,7 @@ where
         &'a self,
         fm: FieldMatch<U>,
     ) -> (Predicate<Self::P>, Vec<MaskedValue>) {
-        match constant::GLOBAL_FAMILY.get_field_declaration(fm.field) {
+        match constant::get_field_declaration(fm.field) {
             Some(fdecl) => {
                 let from = fdecl.from;
                 let to = fdecl.to;
@@ -95,7 +95,7 @@ where
     }
 
     fn encode_match_wo_mv<U: Unsigned>(&'a self, fm: FieldMatch<U>) -> Predicate<Self::P> {
-        match constant::GLOBAL_FAMILY.get_field_declaration(fm.field) {
+        match constant::get_field_declaration(fm.field) {
             Some(fdecl) => {
                 let from = fdecl.from;
                 let to = fdecl.to;
@@ -130,7 +130,7 @@ where
         }
     }
 
-    fn encode_matches<'b, U: Unsigned, II: IntoIterator<Item = FieldMatch<'b, U>>>(
+    fn encode_matches<'b, U: Unsigned, II: IntoIterator<Item = &'b FieldMatch<'b, U>>>(
         &'a self,
         fms: II,
     ) -> (Predicate<Self::P>, Vec<MaskedValue>) {
@@ -138,7 +138,7 @@ where
         let mut mvs = vec![];
         let mut new_mvs = vec![];
         for fm in fms {
-            let (p, sub_mvs) = self.encode_match(fm);
+            let (p, sub_mvs) = self.encode_match(*fm);
             pred &= p;
             if mvs.is_empty() {
                 mvs.extend(sub_mvs)

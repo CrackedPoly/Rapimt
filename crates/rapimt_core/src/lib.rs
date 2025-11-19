@@ -13,11 +13,8 @@ pub mod prelude {
             Dimension, Multiple, Single, UncodedAction,
         },
         r#match::{
-            engine::{
-                MatchEncoder, OxiddPredicate, OxiddPredicateEngine, PredicateEngine,
-                RuddyPredicate, RuddyPredicateEngine,
-            },
-            family::{constant, MatchFamily},
+            engine::{MatchEncoder, OxiddPredicateEngine, PredicateEngine, RuddyPredicateEngine},
+            family::constant,
             predicate::{Predicate, PredicateInner},
             raw_match::macros::*,
             raw_match::{FieldMatch, MaskedValue, Match},

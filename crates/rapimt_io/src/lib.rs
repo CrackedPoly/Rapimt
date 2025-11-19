@@ -11,10 +11,10 @@ pub mod ib;
 pub mod prelude {
     pub use crate::{
         default::{
-            loader::{DefaultInstLoader, PortInfoBase, TypedAction},
+            loader::{DefaultFibLoader, DefaultInstLoader, PortInfoBase, TypedAction},
             FibLoader, InstanceLoader,
         },
         error::*,
-        ib::{db_csv_parser::csv_parser, loader::*},
+        ib,
     };
 }

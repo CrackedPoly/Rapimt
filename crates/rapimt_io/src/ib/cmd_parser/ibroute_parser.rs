@@ -5,7 +5,7 @@ use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::prelude::{Guid, RawIbFibRule};
+use crate::prelude::ib::loader::{Guid, RawIbFibRule};
 
 #[derive(Parser)]
 #[grammar = "src/ib/cmd_parser/ibroute.pest"]

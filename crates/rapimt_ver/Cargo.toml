@@ -4,9 +4,9 @@ version = "0.2.3"
 edition = "2021"
 
 [dependencies]
-rapimt_core = { path = "../rapimt_core", features = ["lid"] , version = "0.2.2" }
-rapimt_im = { path = "../rapimt_im" , version = "0.2.2" }
-rapimt_io = { path = "../rapimt_io" , version = "0.2.2" }
+rapimt_core = { path = "../rapimt_core", features = ["lid"], version = "0.2.2" }
+rapimt_im = { path = "../rapimt_im", version = "0.2.2" }
+rapimt_io = { path = "../rapimt_io", version = "0.2.2" }
 serde = { workspace = true }
 snafu = { workspace = true }
 fxhash = { workspace = true }
@@ -18,5 +18,8 @@ rayon = { version = "1.10.0" }
 typetag = "0.2"
 pest = "2"
 pest_derive = "2"
+
+[features]
+arc = ["rapimt_core/arc", "rapimt_im/arc", "rapimt_io/arc"]
 
 [dev-dependencies]

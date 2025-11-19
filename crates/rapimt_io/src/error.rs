@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use snafu::Snafu;
 
-use crate::prelude::{GroupIdx, Guid, PortIdx};
+use crate::prelude::ib::loader::{GroupIdx, Guid, PortIdx};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]

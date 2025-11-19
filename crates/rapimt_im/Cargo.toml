@@ -10,3 +10,6 @@ fxhash = { workspace = true }
 rapimt_core = { path = "../rapimt_core" , version = "0.2.2" }
 rapimt_tpt = { path = "../rapimt_tpt" , version = "0.2.2" }
 
+[features]
+arc = ["rapimt_core/arc"]
+

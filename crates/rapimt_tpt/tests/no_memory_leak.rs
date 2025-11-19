@@ -5,7 +5,7 @@ use rapimt_core::prelude::MaskedValue;
 use rapimt_tpt::prelude::{Segmentizer, TernaryPatriciaTree};
 
 #[test]
-#[ignore = "test should be run mannually"]
+#[ignore = "test should run manually"]
 fn test_no_memory_leak() {
     #[global_allocator]
     static PEAK_ALLOC: PeakAlloc = PeakAlloc;
@@ -79,7 +79,7 @@ fn test_no_memory_leak() {
     }
     let current_mem = PEAK_ALLOC.current_usage_as_kb();
     println!(
-        "forth time: after insertion one-by-one: it uses {} kB of RAM.",
+        "fourth time: after insertion one-by-one: it uses {} kB of RAM.",
         current_mem
     );
 
@@ -88,7 +88,7 @@ fn test_no_memory_leak() {
     }
     let current_mem = PEAK_ALLOC.current_usage_as_kb();
     println!(
-        "forth time: after deletion one-by-one: it uses {} kB of RAM.",
+        "fourth time: after deletion one-by-one: it uses {} kB of RAM.",
         current_mem
     );
 }

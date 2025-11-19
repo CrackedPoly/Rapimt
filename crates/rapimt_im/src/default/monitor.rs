@@ -1,8 +1,12 @@
 use std::{
     cell::UnsafeCell,
     collections::{BTreeSet, BinaryHeap, HashMap},
-    rc::Rc,
 };
+
+#[cfg(not(feature = "arc"))]
+use std::rc::Rc;
+#[cfg(feature = "arc")]
+use std::sync::Arc as Rc;
 
 use fxhash::{FxBuildHasher, FxHashMap};
 use rapimt_core::prelude::{
@@ -174,13 +178,6 @@ where
     RS: RuleStore<A, ME::P>,
     S: std::hash::BuildHasher + std::clone::Clone + std::default::Default,
 {
-    fn clear(&mut self) {
-        self.store.clear();
-        self.i_rules.clear();
-        self.d_rules.clear();
-        self.i_rules.push(self.default_rule.clone());
-    }
-
     fn update(
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
@@ -211,6 +208,7 @@ where
     ME: MatchEncoder<'p>,
     RS: RuleStore<A, ME::P>,
 {
+    /// Refresh the rule store and return an update of the refreshed rules.
     fn refresh<OA, T, M>(&mut self) -> InverseModel<OA, ME::P, T, M>
     where
         OA: Action<T, S = A>,
@@ -280,7 +278,7 @@ where
     }
 
     pub fn new(engine: &'p ME) -> Self {
-        // this is the default rule of every forwarding device
+        // default rule of every forwarding device
         let drop_rule = Rc::new(Rule {
             priority: -1,
             action: A::default_action(),
@@ -296,5 +294,13 @@ where
             tmp_ow: UnsafeCell::new(local_ap),
             store: RS::default(),
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.store.clear();
+        self.i_rules.clear();
+        self.d_rules.clear();
+        self.i_rules.push(self.default_rule.clone());
+        self.tmp_ow.get_mut().clear();
     }
 }
