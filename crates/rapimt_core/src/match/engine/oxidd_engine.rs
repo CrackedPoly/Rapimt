@@ -8,6 +8,7 @@ use std::{
 use funty::Unsigned;
 use oxidd::{
     bdd::{BDDFunction, BDDManagerRef},
+    util::AllocResult,
     BooleanFunction, BooleanFunctionQuant, Manager, ManagerRef,
 };
 
@@ -56,14 +57,18 @@ impl OxiddPredicateEngine {
         let manager_ref = oxidd::bdd::new_manager(node_num, cache_size, 1);
         let mut var_pair = vec![];
 
-        manager_ref.with_manager_exclusive(|manager| {
-            var_pair.push((BDDFunction::t(manager), BDDFunction::f(manager)))
+        let vars: Vec<BDDFunction> = manager_ref.with_manager_exclusive(|manager| {
+            var_pair.push((BDDFunction::t(manager), BDDFunction::f(manager)));
+            AllocResult::from_iter(
+                manager
+                    .add_vars(constant::MAX_POS as u32)
+                    .map(|i| BDDFunction::var(manager, i)),
+            )
+            .unwrap()
         });
-        for _ in 0..constant::MAX_POS {
-            let v = manager_ref
-                .with_manager_exclusive(|manager| BDDFunction::new_var(manager).unwrap());
-            let nv = v.not().unwrap();
-            var_pair.push((v, nv));
+        for var in vars {
+            let nvar = var.not().unwrap();
+            var_pair.push((var, nvar));
         }
 
         #[cfg(feature = "dip")]
@@ -472,10 +477,11 @@ mod tests {
     fn test_oxidd() -> AllocResult<()> {
         let manager_ref = oxidd::bdd::new_manager(1024, 1024, 1);
         let (x1, x2, x3) = manager_ref.with_manager_exclusive(|manager| {
+            let vars: Vec<_> = manager.add_vars(3u32).collect();
             (
-                BDDFunction::new_var(manager).unwrap(),
-                BDDFunction::new_var(manager).unwrap(),
-                BDDFunction::new_var(manager).unwrap(),
+                AllocResult::from(BDDFunction::var(manager, vars[0])).unwrap(),
+                AllocResult::from(BDDFunction::var(manager, vars[1])).unwrap(),
+                AllocResult::from(BDDFunction::var(manager, vars[2])).unwrap(),
             )
         });
 
@@ -510,7 +516,7 @@ mod tests {
     #[test]
     #[cfg(feature = "dip")]
     fn test_oxidd_and() {
-        let engine = OxiddPredicateEngine::init(1000, 100);
+        let engine = OxiddPredicateEngine::init(10000, 1000);
 
         let (mut p0, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/24"));
         let (p1, _) = engine.encode_match(fm_ipv4_from!("dip", "192.168.1.0/28"));

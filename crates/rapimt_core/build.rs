@@ -42,7 +42,7 @@ fn main() {
     #[cfg(feature = "lid")]
     let m = m.entry(
         "lid",
-        format!("({}usize, {}usize)", counter, counter + 16).as_str(),
+        format!("({}usize, {}usize)", counter, counter + 16),
     );
     #[cfg(feature = "lid")]
     let counter = counter + 16;
@@ -50,7 +50,7 @@ fn main() {
     #[cfg(feature = "tag")]
     let m = m.entry(
         "tag",
-        format!("({}usize, {}usize)", counter, counter + 16).as_str(),
+        format!("({}usize, {}usize)", counter, counter + 16),
     );
     #[cfg(feature = "tag")]
     let counter = counter + 16;
@@ -58,7 +58,7 @@ fn main() {
     #[cfg(feature = "sport")]
     let m = m.entry(
         "sport",
-        format!("({}usize, {}usize)", counter, counter + 16).as_str(),
+        format!("({}usize, {}usize)", counter, counter + 16),
     );
     #[cfg(feature = "sport")]
     let counter = counter + 16;
@@ -66,7 +66,7 @@ fn main() {
     #[cfg(feature = "dport")]
     let m = m.entry(
         "dport",
-        format!("({}usize, {}usize)", counter, counter + 16).as_str(),
+        format!("({}usize, {}usize)", counter, counter + 16),
     );
     #[cfg(feature = "dport")]
     let counter = counter + 16;
@@ -74,7 +74,7 @@ fn main() {
     #[cfg(feature = "sip")]
     let m = m.entry(
         "sip",
-        format!("({}usize, {}usize)", counter, counter + 32).as_str(),
+        format!("({}usize, {}usize)", counter, counter + 32),
     );
     #[cfg(feature = "sip")]
     let counter = counter + 32;
@@ -82,7 +82,7 @@ fn main() {
     #[cfg(feature = "dip")]
     let m = m.entry(
         "dip",
-        format!("({}usize, {}usize)", counter, counter + 32).as_str(),
+        format!("({}usize, {}usize)", counter, counter + 32),
     );
     #[cfg(feature = "dip")]
     let counter = counter + 32;
