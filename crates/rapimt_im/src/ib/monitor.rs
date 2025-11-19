@@ -32,13 +32,6 @@ where
     ME: MatchEncoder<'p>,
     S: std::hash::BuildHasher + std::clone::Clone + std::default::Default,
 {
-    fn clear(&mut self) {
-        self.i_rules.clear();
-        self.d_rules.clear();
-        self.store.clear();
-        self.store.insert(self.default_rule.clone());
-    }
-
     /// Invariant: predicate of any two rules in insertion and deletion respectively should not
     /// overlap.
     fn update(
@@ -86,13 +79,6 @@ where
     T: Dimension,
     ME: MatchEncoder<'p>,
 {
-    fn clear(&mut self) {
-        self.i_rules.clear();
-        self.d_rules.clear();
-        self.store.clear();
-        self.store.insert(self.default_rule.clone());
-    }
-
     /// Invariant: predicate of any two rules in insertion and deletion respectively should not
     /// overlap.
     fn update(
@@ -131,5 +117,13 @@ where
             store: BTreeSet::new(),
             tmp_ow: HashMap::with_hasher(FxBuildHasher::default()),
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.i_rules.clear();
+        self.d_rules.clear();
+        self.store.clear();
+        self.store.insert(self.default_rule.clone());
+        self.tmp_ow.clear();
     }
 }

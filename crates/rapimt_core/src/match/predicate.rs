@@ -52,7 +52,7 @@ pub trait PredicateInner:
 /// use rapimt_core::prelude::{
 ///     ipv4_to_match,
 ///     Predicate, MatchEncoder,
-///     RuddyPredicateEngine, FieldMatch, MatchFamily
+///     RuddyPredicateEngine, FieldMatch
 /// };
 ///
 /// fn get_predicates<ME: for <'a> MatchEncoder<'a>>(engine: &ME)-> [Predicate<<ME as MatchEncoder<'_>>::P>;3] {

@@ -205,7 +205,7 @@ impl<'a> UncodedAction<'a> for TypedAction<'a> {
 #[derive(Debug)]
 pub struct PortInfoBase {
     #[allow(dead_code)]
-    dev: String,
+    dev: Rc<str>,
     // port name -> neighbor info
     #[allow(dead_code)]
     nbrs: RefCell<HashSet<NeighborInfo, FxBuildHasher>>,
@@ -216,8 +216,8 @@ pub struct PortInfoBase {
 impl PortInfoBase {
     /// Returns the device name.
     #[inline]
-    pub fn get_dev(&self) -> &str {
-        &self.dev
+    pub fn get_dev(&self) -> Rc<str> {
+        self.dev.clone()
     }
 
     pub fn neighbors(&self) -> impl IntoIterator<Item = Rc<str>> {
@@ -370,7 +370,7 @@ impl InstanceLoader<'_, PortInfoBase> for DefaultInstLoader {
         Ok((
             (),
             PortInfoBase {
-                dev: dev.to_string(),
+                dev: dev.into(),
                 nbrs: RefCell::new(nbrs.into_inner()),
                 ports: RefCell::new(ports),
             },
@@ -653,7 +653,7 @@ mod tests {
         port gi1 flood ge0 ge1
         "#;
         let base = loader.load(spec).unwrap();
-        assert_eq!(base.dev, "dev0");
+        assert_eq!(base.dev, "dev0".into());
         assert_eq!(base.nbrs.borrow().len(), 2);
         assert_eq!(base.ports.borrow().len(), 6);
 
@@ -829,7 +829,7 @@ mod tests {
         let im: InverseModel<_, _, _, MapMonoid<usize, _>> = fib_monitor.insert(fibs.clone());
         assert_eq!(im.len(), 3);
 
-        RuleMonitorLike::<_, usize, _, MapMonoid<_, _>, _, _>::clear(&mut fib_monitor);
+        fib_monitor.clear();
         let im: InverseModel<_, _, _, MapMonoid<usize, _>> = fib_monitor.insert(fibs);
         assert_eq!(im.len(), 3);
 

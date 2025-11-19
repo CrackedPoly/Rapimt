@@ -17,7 +17,7 @@
 //! use rapimt_core::prelude::{
 //!     ipv4_to_match,
 //!     Predicate, PredicateEngine, MatchEncoder,
-//!     RuddyPredicateEngine, FieldMatch, MatchFamily
+//!     RuddyPredicateEngine, FieldMatch
 //! };
 //!
 //! // Initialize the engine

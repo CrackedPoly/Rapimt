@@ -178,13 +178,6 @@ where
     RS: RuleStore<A, ME::P>,
     S: std::hash::BuildHasher + std::clone::Clone + std::default::Default,
 {
-    fn clear(&mut self) {
-        self.store.clear();
-        self.i_rules.clear();
-        self.d_rules.clear();
-        self.i_rules.push(self.default_rule.clone());
-    }
-
     fn update(
         &mut self,
         insertion: impl IntoIterator<Item = Rule<ME::P, A>>,
@@ -301,5 +294,13 @@ where
             tmp_ow: UnsafeCell::new(local_ap),
             store: RS::default(),
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.store.clear();
+        self.i_rules.clear();
+        self.d_rules.clear();
+        self.i_rules.push(self.default_rule.clone());
+        self.tmp_ow.get_mut().clear();
     }
 }

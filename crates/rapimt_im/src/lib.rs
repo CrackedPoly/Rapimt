@@ -44,9 +44,6 @@ where
     P: PredicateInner,
     R: RuleLike<A = A, P = P>,
 {
-    /// Required methods
-    fn clear(&mut self);
-
     /// First call of update should return an inverse model of the current state.
     /// Subsequent calls should return an inverse model that represent an incremental update.
     fn update(

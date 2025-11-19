@@ -3,7 +3,7 @@
 //! ```no_run
 //! use rapimt_core::fm_ipv4_from;
 //! use rapimt_core::prelude::{
-//!     ipv4_to_match, Match, FieldMatch, MatchFamily
+//!     ipv4_to_match, Match, FieldMatch
 //! };
 //!
 //! let fm = fm_ipv4_from!("dip", "192.168.1.0/24");
