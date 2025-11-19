@@ -1,92 +1,82 @@
-# [Rap]()id [I]()nverse [M]()odel [T]()ransformation
+# Rapimt
 
-[![Test](https://github.com/CrackedPoly/Rapimt/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/CrackedPoly/Rapimt/actions/workflows/tests.yml)
-[![Docs](https://github.com/CrackedPoly/Rapimt/actions/workflows/docs.yml/badge.svg)](https://github.com/CrackedPoly/Rapimt/actions/workflows/docs.yml)
+Rapimt implements the Flash inverse model transformation pipeline
+(see [`docs/flash-sigcomm22.pdf`]) entirely in Rust. The crate that you
+depend on (`rapimt`) is a lightweight facade over a set of internal
+crates that cover predicate engines, inverse model arithmetic, device
+IO, and pluggable verification logic.
 
-Inverse Model Transformation in Rust
+## Workspace layout
 
-## Introduction
+- `rapimt::core` &mdash; header-space encoders, predicate engines (Ruddy
+  and Oxidd), match macros, and forwarding action traits.
+- `rapimt::im` &mdash; inverse model data structures plus rule monitors
+  such as [`FastRuleMonitor`].
+- `rapimt::io` &mdash; parsers and loaders (default router format and
+  InfiniBand snapshots).
+- `rapimt::ver` &mdash; graph-based verification drivers and plugins.
+- `rapimt::prelude` &mdash; re-exports of the symbols most developers
+  reach for (`use rapimt::prelude::*;`).
 
-Rapimt is a data plane verification framework[^1] written in Rust.
+## Typical workflow
 
-## Features
+1. Pick a [`PredicateEngine`]
+   (Ruddy for fast single-threaded prototyping, Oxidd for multi-threaded
+   production runs) and enable the feature flags for the header fields you
+   care about (`dip`, `sip`, `sport`, ...).
+2. Load topology information with an [`InstanceLoader`]
+   or your own device specific loader and obtain an
+   [`ActionEncoder`].
+3. Parse the device FIB into [`Rule`] objects via [`FibLoader`].
+4. Feed incremental changes into a [`RuleMonitor`] (e.g. [`FastRuleMonitor`])
+   to generate per-device inverse models.
+5. Resize and merge device models into a network-wide [`InverseModel`],
+   then dispatch verification plugins.
 
-- currently supported match fields: `src_ip`, `dst_ip`, `src_port`, `dst_port`, `vlan`
-- predicate engines: `Ruddy`, `OxiDD`
-- verification functions: TODO
+```rust,no_run
+use rapimt::core::action::seq_action::SeqAction;
+use rapimt::prelude::{
+    FastRuleMonitor, FibLoader, InverseModel, InstanceLoader, MapInverseModel,
+    RuddyPredicateEngine, TPTRuleStore,
+};
+use rapimt::io::default::loader::{DefaultInstLoader, PortInfoBase};
 
-## Example
+# fn demo() -> Result<(), Box<dyn std::error::Error>> {
+let engine = RuddyPredicateEngine::init(10_000, 1_000);
+let loader = DefaultInstLoader::default();
 
-How many equivalent classes are there in a network? Compute it by Inverse
-Model! (see the full example in `crates/rapimt_io/examples/stanford`)
+// Load the action encoder for a device.
+let spec = std::fs::read_to_string("specs/dev0.spec")?;
+let codex: PortInfoBase = loader.load(&spec)?;
 
-```rust
-let engine = RuddyPredicateEngine::init(10_000, 1000);
-let loader = DefaultInstLoader {};
-let devs = vec![
-    "bbra_rtr", "bbrb_rtr", "boza_rtr", "bozb_rtr", "coza_rtr", "cozb_rtr", "goza_rtr",
-    "gozb_rtr", "poza_rtr", "pozb_rtr", "roza_rtr", "rozb_rtr", "soza_rtr", "sozb_rtr",
-    "yoza_rtr", "yozb_rtr",
-];
+// Parse the FIB and insert rules into a monitor.
+let fib = std::fs::read_to_string("fibs/dev0.fib")?;
+let (_, rules) = codex.load(&engine, &fib)?;
+let mut monitor: FastRuleMonitor<_, _, TPTRuleStore<_, _>> =
+    FastRuleMonitor::new(&engine);
+let update: MapInverseModel<SeqAction<usize>, _, _> = monitor.insert(rules);
+assert!(update.property_check());
 
-// 1. Load topology (port information)
-let codexes: HashMap<&str, PortInfoBase> = devs
-    .iter()
-    .map(|&d| {
-        let spec_cont = read_to_string(format!("examples/stanford/spec/{}.spec", d)).unwrap();
-        let codex = loader.load(&spec_cont).unwrap();
-        (d, codex)
-    })
-    .collect();
-
-// 2. Create rule monitors
-let mut monitors: HashMap<&str, FastRuleMonitor<_, _, TPTRuleStore<_, _>>> = devs
-    .iter()
-    .map(|&d| (d, FastRuleMonitor::<_, _, _>::new(&engine)))
-    .collect();
-
-// 3. Load fibs and convert them into incremental updates (or we call it Device Inverse Model)
-let im_updates = devs.iter().map(|&d| {
-    let fib_cont = read_to_string(format!("examples/stanford/fib/{}.fib", d)).unwrap();
-    let fibs = codexes[d].load(&engine, &fib_cont).unwrap().1;
-    let im_update: MapInverseModel<SeqAction<usize>, _, _> =
-        monitors.get_mut(d).unwrap().insert(fibs);
-    (d, im_update)
-});
-
-// 4. Merge incremental updates into one big network model (or we call it Network Inverse Model)
-let im: MapInverseModel<SeqAction<usize>, _, _> = im_updates
-    .map(|(d, im_update)| {
-        let idx = devs.iter().position(|&x| x == d).unwrap();
-        // resize device inverse model to the right network index
-        InverseModel::resize(im_update, devs.len(), idx)
-    })
-    .reduce(|mut x, y| {
-        x <<= y;
-        x
-    })
-    .unwrap();
-
-// 5. Check the number of equivalent classes in the network-wide
-// The number of equivalent classes in this stanford dataset is 155
-assert_eq!(im.len(), 155)
+// Resize/merge updates for a multi-device network.
+let mut net: MapInverseModel<SeqAction<usize>, _, _> = InverseModel::default();
+net <<= InverseModel::resize(update, /*num_devices*/ 1, /*offset*/ 0);
+# Ok(())
+# }
 ```
 
-## TODO List
+For a longer, end-to-end walkthrough read `docs/development.md`.
 
-- [x] Use patricia tree to store rules in a device
-- [x] Optimize the inverse model resizing
-- [ ] Port TOBDD[^2] predicate engine to Rust
-- [ ] Benchmark the performance in larger datasets
-- [ ] Implement more verification modules, such as the paper "Modular DPV for
-  Compositional Networks"[^3]
+## Feature flags
 
-## Reference
+The crate documentation includes an auto-generated table of all feature
+flags via `document_features::document_features!()`.
 
-[^1]: Shenshen Chen, Jian Luo, Dong Guo, Kai Gao and Y. Richard Yang, "Fast Inverse Model Transformation: Algebraic Framework for Fast Data Plane Verification", in IEEE Transactions on Dependable and Secure Computing.
-
-[^2]: Dong Guo, Jian Luo, Kai Gao, and Y. Richard Yang, "Poster: Scaling Data Plane Verification with Throughput-Optimized Atomic Predicates", (ACM SIGCOMM '23).
-
-[^3]: Xu Liu, Peng Zhang, Hao Li, and Wenbing Sun, "Modular Data Plane Verification for Compositional Networks", (ACM CoNEXT '23).
-
-## License
+[`docs/flash-sigcomm22.pdf`]: https://raw.githubusercontent.com/CrackedPoly/Rapimt/refs/heads/main/docs/flash-sigcomm22.pdf
+[`FastRuleMonitor`]: https://crackedpoly.github.io/Rapimt/rapimt/im/default/monitor/struct.FastRuleMonitor.html
+[`PredicateEngine`]: https://crackedpoly.github.io/Rapimt/rapimt/core/match/engine/trait.PredicateEngine.html
+[`InstanceLoader`]: https://crackedpoly.github.io/Rapimt/rapimt/io/default/trait.InstanceLoader.html
+[`ActionEncoder`]: https://crackedpoly.github.io/Rapimt/rapimt/core/action/trait.ActionEncoder.html
+[`Rule`]: https://crackedpoly.github.io/Rapimt/rapimt/im/default/rule/struct.Rule.html
+[`FibLoader`]: https://crackedpoly.github.io/Rapimt/rapimt/io/default/trait.FibLoader.html
+[`RuleMonitor`]: https://crackedpoly.github.io/Rapimt/rapimt/im/trait.RuleMonitorLike.html
+[`InverseModel`]: https://crackedpoly.github.io/Rapimt/rapimt/im/struct.InverseModel.html

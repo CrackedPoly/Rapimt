@@ -11,7 +11,7 @@ RuDDy = { workspace = true }
 num_enum = { workspace = true }
 serde = { workspace = true }
 funty = { workspace = true }
-oxidd = { version = "0.10.0", features = [
+oxidd = { version = "0.11.0", features = [
   "bdd",
   "manager-pointer",
   "multi-threading",
@@ -20,7 +20,7 @@ phf = { version = "0.13", default-features = false }
 
 [build-dependencies]
 phf = { version = "0.13", default-features = false }
-phf_codegen = "0.11.1"
+phf_codegen = "0.13.1"
 
 [features]
 default = ["dip", "sip", "sport", "dport", "tag", "lid"]
