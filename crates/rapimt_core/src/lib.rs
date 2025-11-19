@@ -9,8 +9,8 @@ pub mod r#match;
 pub mod prelude {
     pub use crate::{
         action::{
-            acl::AclActionType, fwd::FwdActionType, Action, ActionEncoder, Actions, CodedAction,
-            Dimension, Multiple, Single, UncodedAction,
+            acl::AclActionType, fwd::FwdActionType, seq_action::SeqAction, Action, ActionEncoder,
+            Actions, CodedAction, Dimension, Multiple, Single, UncodedAction,
         },
         r#match::{
             engine::{MatchEncoder, OxiddPredicateEngine, PredicateEngine, RuddyPredicateEngine},

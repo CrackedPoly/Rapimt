@@ -34,34 +34,31 @@ IO, and pluggable verification logic.
    then dispatch verification plugins.
 
 ```rust,no_run
-use rapimt::core::action::seq_action::SeqAction;
-use rapimt::prelude::{
-    FastRuleMonitor, FibLoader, InverseModel, InstanceLoader, MapInverseModel,
-    RuddyPredicateEngine, TPTRuleStore,
-};
-use rapimt::io::default::loader::{DefaultInstLoader, PortInfoBase};
+use rapimt::core::prelude::{SeqAction, RuddyPredicateEngine};
+use rapimt::io::prelude::{InstanceLoader, DefaultInstLoader, FibLoader, PortInfoBase};
+use rapimt::im::prelude::{RuleMonitorLike, FastRuleMonitor, InverseModel, MapInverseModel, TPTRuleStore};
 
-# fn demo() -> Result<(), Box<dyn std::error::Error>> {
-let engine = RuddyPredicateEngine::init(10_000, 1_000);
-let loader = DefaultInstLoader::default();
+fn demo() -> Result<(), Box<dyn std::error::Error>> {
+  let engine = RuddyPredicateEngine::init(10_000, 1_000);
+  let loader = DefaultInstLoader::default();
 
-// Load the action encoder for a device.
-let spec = std::fs::read_to_string("specs/dev0.spec")?;
-let codex: PortInfoBase = loader.load(&spec)?;
+  // Load the action encoder for a device.
+  let spec = std::fs::read_to_string("specs/dev0.spec")?;
+  let codex: PortInfoBase = loader.load(&spec).unwrap();
 
-// Parse the FIB and insert rules into a monitor.
-let fib = std::fs::read_to_string("fibs/dev0.fib")?;
-let (_, rules) = codex.load(&engine, &fib)?;
-let mut monitor: FastRuleMonitor<_, _, TPTRuleStore<_, _>> =
-    FastRuleMonitor::new(&engine);
-let update: MapInverseModel<SeqAction<usize>, _, _> = monitor.insert(rules);
-assert!(update.property_check());
+  // Parse the FIB and insert rules into a monitor.
+  let fib = std::fs::read_to_string("fibs/dev0.fib")?;
+  let (_, rules) = codex.load(&engine, &fib).unwrap();
+  let mut monitor: FastRuleMonitor<_, _, TPTRuleStore<_, _>> =
+      FastRuleMonitor::new(&engine);
+  let update: MapInverseModel<SeqAction<usize>, _, _> = monitor.insert(rules);
+  assert!(update.property_check());
 
-// Resize/merge updates for a multi-device network.
-let mut net: MapInverseModel<SeqAction<usize>, _, _> = InverseModel::default();
-net <<= InverseModel::resize(update, /*num_devices*/ 1, /*offset*/ 0);
-# Ok(())
-# }
+  // Resize/merge updates for a multi-device network.
+  let mut net: MapInverseModel<SeqAction<usize>, _, _> = InverseModel::default();
+  net <<= InverseModel::resize(update, /*num_devices*/ 1, /*offset*/ 0);
+  Ok(())
+}
 ```
 
 For a longer, end-to-end walkthrough read `docs/development.md`.
