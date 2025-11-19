@@ -1,6 +1,5 @@
 //! Parse topology and rules from diverse sources.
 #![feature(once_cell_get_mut)]
-#![feature(path_file_prefix)]
 
 pub mod default;
 pub mod error;
